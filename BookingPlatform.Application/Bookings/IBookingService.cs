@@ -6,4 +6,3 @@ public interface IBookingService
 {
     // Каркас сервиса бронирований, без реализации
 }
-
