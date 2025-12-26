@@ -9,7 +9,7 @@ namespace BookingPlatform.Web.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize]
+[Authorize(Policy = "AdminOnly")]
 public class RoomsController : ControllerBase
 {
     private readonly IMediator _mediator;
@@ -59,4 +59,3 @@ public class RoomsController : ControllerBase
         return NoContent();
     }
 }
-

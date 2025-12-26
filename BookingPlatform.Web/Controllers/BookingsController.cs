@@ -59,4 +59,3 @@ public class BookingsController : ControllerBase
         return NoContent();
     }
 }
-
