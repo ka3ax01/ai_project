@@ -1,0 +1,38 @@
+@page
+@model BookingPlatform.Web.Pages.Admin.Bookings.IndexModel
+@{
+    ViewData["Title"] = "Bookings";
+}
+
+<h1>Bookings</h1>
+
+<p>
+    <a asp-page="/Admin/Index">Back to admin panel</a>
+</p>
+
+<table class="table">
+    <thead>
+    <tr>
+        <th>Room</th>
+        <th>User</th>
+        <th>Start</th>
+        <th>End</th>
+        <th>Status</th>
+        <th>Purpose</th>
+    </tr>
+    </thead>
+    <tbody>
+    @foreach (var booking in Model.Bookings)
+    {
+        <tr>
+            <td>@booking.RoomId</td>
+            <td>@booking.UserId</td>
+            <td>@booking.StartTimeUtc</td>
+            <td>@booking.EndTimeUtc</td>
+            <td>@booking.Status</td>
+            <td>@booking.Purpose</td>
+        </tr>
+    }
+    </tbody>
+</table>
+

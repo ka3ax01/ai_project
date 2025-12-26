@@ -1,0 +1,46 @@
+@page
+@model BookingPlatform.Web.Pages.Admin.Rooms.CreateModel
+@{
+    ViewData["Title"] = "Create room";
+}
+
+<h1>Create room</h1>
+
+<p>
+    <a asp-page="/Admin/Rooms/Index">Back to rooms</a> |
+    <a asp-page="/Admin/Index">Back to admin panel</a>
+</p>
+
+<form method="post">
+    <div class="form-group">
+        <label asp-for="BuildingId"></label>
+        <input asp-for="BuildingId" class="form-control" />
+        <span asp-validation-for="BuildingId" class="text-danger"></span>
+    </div>
+    <div class="form-group">
+        <label asp-for="Number"></label>
+        <input asp-for="Number" class="form-control" />
+        <span asp-validation-for="Number" class="text-danger"></span>
+    </div>
+    <div class="form-group">
+        <label asp-for="Floor"></label>
+        <input asp-for="Floor" class="form-control" />
+        <span asp-validation-for="Floor" class="text-danger"></span>
+    </div>
+    <div class="form-group">
+        <label asp-for="Capacity"></label>
+        <input asp-for="Capacity" class="form-control" />
+        <span asp-validation-for="Capacity" class="text-danger"></span>
+    </div>
+    <div class="form-group">
+        <label asp-for="RoomType"></label>
+        <input asp-for="RoomType" class="form-control" />
+        <span asp-validation-for="RoomType" class="text-danger"></span>
+    </div>
+    <div class="form-group form-check">
+        <input asp-for="IsActive" class="form-check-input" />
+        <label asp-for="IsActive" class="form-check-label"></label>
+    </div>
+    <button type="submit" class="btn btn-primary">Save</button>
+</form>
+

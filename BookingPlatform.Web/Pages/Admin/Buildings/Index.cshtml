@@ -1,0 +1,33 @@
+@page
+@model BookingPlatform.Web.Pages.Admin.Buildings.IndexModel
+@{
+    ViewData["Title"] = "Buildings";
+}
+
+<h1>Buildings</h1>
+
+<p>
+    <a asp-page="Create">Create new building</a>
+</p>
+
+<p>
+    <a asp-page="/Admin/Index">Back to admin panel</a>
+</p>
+
+<table class="table">
+    <thead>
+    <tr>
+        <th>Name</th>
+        <th>Code</th>
+    </tr>
+    </thead>
+    <tbody>
+    @foreach (var building in Model.Buildings)
+    {
+        <tr>
+            <td>@building.Name</td>
+            <td>@building.Code</td>
+        </tr>
+    }
+    </tbody>
+</table>

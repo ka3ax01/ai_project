@@ -1,0 +1,26 @@
+@page
+@model BookingPlatform.Web.Pages.Admin.Buildings.CreateModel
+@{
+    ViewData["Title"] = "Create building";
+}
+
+<h1>Create building</h1>
+
+<p>
+    <a asp-page="/Admin/Buildings/Index">Back to buildings</a> |
+    <a asp-page="/Admin/Index">Back to admin panel</a>
+</p>
+
+<form method="post">
+    <div class="form-group">
+        <label asp-for="Name"></label>
+        <input asp-for="Name" class="form-control" />
+        <span asp-validation-for="Name" class="text-danger"></span>
+    </div>
+    <div class="form-group">
+        <label asp-for="Code"></label>
+        <input asp-for="Code" class="form-control" />
+        <span asp-validation-for="Code" class="text-danger"></span>
+    </div>
+    <button type="submit" class="btn btn-primary">Save</button>
+</form>

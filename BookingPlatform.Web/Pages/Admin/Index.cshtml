@@ -1,0 +1,13 @@
+@page
+@model BookingPlatform.Web.Pages.Admin.IndexModel
+@{
+    ViewData["Title"] = "Admin panel";
+}
+
+<h1>Admin panel</h1>
+
+<ul>
+    <li><a asp-page="/Admin/Buildings/Index">Buildings</a></li>
+    <li><a asp-page="/Admin/Rooms/Index">Rooms</a></li>
+    <li><a asp-page="/Admin/Bookings/Index">Bookings</a></li>
+</ul>
