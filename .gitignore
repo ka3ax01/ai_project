@@ -1,0 +1,27 @@
+# Build artifacts
+bin/
+obj/
+
+# User-specific files
+*.user
+*.rsuser
+*.suo
+*.userosscache
+*.sln.docstates
+
+# IDE directories
+.vs/
+.idea/
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Rider / ReSharper
+_ReSharper*/
+*.DotSettings.user
+
