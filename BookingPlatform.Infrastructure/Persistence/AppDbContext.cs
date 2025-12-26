@@ -1,3 +1,4 @@
+using BookingPlatform.Domain.Auth;
 using BookingPlatform.Domain.Bookings;
 using BookingPlatform.Domain.Buildings;
 using BookingPlatform.Domain.Equipment;
@@ -19,6 +20,7 @@ public class AppDbContext : DbContext
     public DbSet<Equipment> Equipment => Set<Equipment>();
     public DbSet<RoomEquipment> RoomEquipment => Set<RoomEquipment>();
     public DbSet<Booking> Bookings => Set<Booking>();
+    public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -26,4 +28,3 @@ public class AppDbContext : DbContext
         // Здесь позже добавим конфигурации сущностей
     }
 }
-

@@ -2,8 +2,8 @@ namespace BookingPlatform.Domain.Enums;
 
 public enum UserRole : int
 {
-    System,
-    Admin,
-    User,
-    Employee,
+    System = 1,
+    Admin = 2,
+    User = 3,
+    Employee = 4,
 }
