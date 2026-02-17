@@ -8,6 +8,7 @@ using BookingPlatform.Web.Middleware;
 using BookingPlatform.Web.Services;
 using MediatR;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -21,9 +22,19 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 // Jwt options & token service.
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection("Jwt"));
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
-builder.Services.AddTransient<ExceptionHandlingMiddleware>();
+builder.Services.AddTransient<CorrelationIdMiddleware>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
+builder.Services.AddScoped<IRequestContextAccessor, RequestContextAccessor>();
+builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
+builder.Services.AddProblemDetails(options =>
+{
+    options.CustomizeProblemDetails = context =>
+    {
+        context.ProblemDetails.Extensions["traceId"] = context.HttpContext.TraceIdentifier;
+        context.ProblemDetails.Extensions["correlationId"] = context.HttpContext.TraceIdentifier;
+    };
+});
 
 // MediatR (сканируем Application и Infrastructure сборки).
 builder.Services.AddMediatR(
@@ -107,17 +118,37 @@ if (app.Environment.IsDevelopment())
 }
 else
 {
-    app.UseExceptionHandler("/Error");
-    // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
     app.UseHsts();
 }
 
+app.UseExceptionHandler();
 app.UseHttpsRedirection();
 app.UseStaticFiles();
 
 app.UseRouting();
+app.UseMiddleware<CorrelationIdMiddleware>();
+app.UseStatusCodePages(async statusCodeContext =>
+{
+    var response = statusCodeContext.HttpContext.Response;
+    if (response.HasStarted || response.ContentLength is > 0)
+    {
+        return;
+    }
 
-app.UseMiddleware<ExceptionHandlingMiddleware>();
+    var problem = new ProblemDetails
+    {
+        Status = response.StatusCode,
+        Title = response.StatusCode switch
+        {
+            StatusCodes.Status403Forbidden => "Forbidden",
+            StatusCodes.Status404NotFound => "Not found",
+            _ => "Request failed"
+        },
+        Detail = $"HTTP {response.StatusCode}"
+    };
+
+    await Results.Problem(problem).ExecuteAsync(statusCodeContext.HttpContext);
+});
 
 app.UseAuthentication();
 app.UseAuthorization();

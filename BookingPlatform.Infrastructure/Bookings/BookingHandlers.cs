@@ -2,45 +2,83 @@ using BookingPlatform.Application.Bookings;
 using BookingPlatform.Application.Bookings.Commands;
 using BookingPlatform.Application.Bookings.Queries;
 using BookingPlatform.Application.Common;
+using BookingPlatform.Application.Common.Exceptions;
 using BookingPlatform.Domain.Bookings;
 using BookingPlatform.Domain.Enums;
 using BookingPlatform.Infrastructure.Persistence;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 namespace BookingPlatform.Infrastructure.Bookings;
 
 public sealed class CreateBookingCommandHandler : IRequestHandler<CreateBookingCommand, BookingDto>
 {
     private readonly AppDbContext _dbContext;
-    private readonly ICurrentUserService _currentUserService;
+    private readonly IRequestContextAccessor _requestContextAccessor;
 
-    public CreateBookingCommandHandler(AppDbContext dbContext, ICurrentUserService currentUserService)
+    public CreateBookingCommandHandler(AppDbContext dbContext, IRequestContextAccessor requestContextAccessor)
     {
         _dbContext = dbContext;
-        _currentUserService = currentUserService;
+        _requestContextAccessor = requestContextAccessor;
     }
 
     public async Task<BookingDto> Handle(CreateBookingCommand request, CancellationToken cancellationToken)
     {
-        var currentUserId = _currentUserService.UserId
+        var currentUserId = _requestContextAccessor.UserId
                             ?? throw new InvalidOperationException("Current user is not resolved.");
+        var startUtc = request.StartTimeUtc.ToUniversalTime();
+        var endUtc = request.EndTimeUtc.ToUniversalTime();
+
+        if (startUtc >= endUtc)
+        {
+            throw new InvalidOperationException("Start time must be less than end time.");
+        }
+
+        var hasOverlap = await _dbContext.Bookings
+            .AsNoTracking()
+            .AnyAsync(
+                b => b.RoomId == request.RoomId
+                     && (b.Status == BookingStatus.Pending || b.Status == BookingStatus.Confirmed)
+                     && b.StartTimeUtc < endUtc
+                     && b.EndTimeUtc > startUtc,
+                cancellationToken);
+        if (hasOverlap)
+        {
+            throw new BookingConflictException("The resource is already booked for the requested time range.");
+        }
 
         var booking = new Booking
         {
             Id = Guid.NewGuid(),
             RoomId = request.RoomId,
             UserId = currentUserId,
-            StartTimeUtc = request.StartTimeUtc.ToUniversalTime(),
-            EndTimeUtc = request.EndTimeUtc.ToUniversalTime(),
+            StartTimeUtc = startUtc,
+            EndTimeUtc = endUtc,
             Status = BookingStatus.Pending,
             Purpose = request.Purpose,
             CreatedAtUtc = DateTimeOffset.UtcNow,
             CreatedBy = currentUserId,
         };
 
-        _dbContext.Bookings.Add(booking);
-        await _dbContext.SaveChangesAsync(cancellationToken);
+        await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            _dbContext.Bookings.Add(booking);
+            _dbContext.BookingAuditLogs.Add(BookingAuditHelpers.CreateAudit(
+                booking.Id,
+                "BookingCreated",
+                null,
+                booking.Status,
+                _requestContextAccessor));
+            await _dbContext.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex) when (BookingAuditHelpers.IsExclusionConflict(ex))
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            throw new BookingConflictException("The resource is already booked for the requested time range.");
+        }
 
         return ToDto(booking);
     }
@@ -60,10 +98,12 @@ public sealed class CreateBookingCommandHandler : IRequestHandler<CreateBookingC
 public sealed class UpdateBookingStatusCommandHandler : IRequestHandler<UpdateBookingStatusCommand, BookingDto>
 {
     private readonly AppDbContext _dbContext;
+    private readonly IRequestContextAccessor _requestContextAccessor;
 
-    public UpdateBookingStatusCommandHandler(AppDbContext dbContext)
+    public UpdateBookingStatusCommandHandler(AppDbContext dbContext, IRequestContextAccessor requestContextAccessor)
     {
         _dbContext = dbContext;
+        _requestContextAccessor = requestContextAccessor;
     }
 
     public async Task<BookingDto> Handle(UpdateBookingStatusCommand request, CancellationToken cancellationToken)
@@ -74,8 +114,31 @@ public sealed class UpdateBookingStatusCommandHandler : IRequestHandler<UpdateBo
             throw new KeyNotFoundException("Booking not found");
         }
 
-        booking.Status = Enum.Parse<BookingStatus>(request.Status, ignoreCase: true);
-        await _dbContext.SaveChangesAsync(cancellationToken);
+        if (!Enum.TryParse<BookingStatus>(request.Status, true, out var newStatus))
+        {
+            throw new InvalidOperationException($"Unsupported booking status '{request.Status}'.");
+        }
+
+        var oldStatus = booking.Status;
+        booking.Status = newStatus;
+
+        await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            _dbContext.BookingAuditLogs.Add(BookingAuditHelpers.CreateAudit(
+                booking.Id,
+                newStatus == BookingStatus.Cancelled ? "BookingCancelled" : "BookingStatusChanged",
+                oldStatus,
+                newStatus,
+                _requestContextAccessor));
+            await _dbContext.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex) when (BookingAuditHelpers.IsExclusionConflict(ex))
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            throw new BookingConflictException("The resource is already booked for the requested time range.");
+        }
 
         return new BookingDto
         {
@@ -93,10 +156,12 @@ public sealed class UpdateBookingStatusCommandHandler : IRequestHandler<UpdateBo
 public sealed class DeleteBookingCommandHandler : IRequestHandler<DeleteBookingCommand>
 {
     private readonly AppDbContext _dbContext;
+    private readonly IRequestContextAccessor _requestContextAccessor;
 
-    public DeleteBookingCommandHandler(AppDbContext dbContext)
+    public DeleteBookingCommandHandler(AppDbContext dbContext, IRequestContextAccessor requestContextAccessor)
     {
         _dbContext = dbContext;
+        _requestContextAccessor = requestContextAccessor;
     }
 
     public async Task<Unit> Handle(DeleteBookingCommand request, CancellationToken cancellationToken)
@@ -107,8 +172,16 @@ public sealed class DeleteBookingCommandHandler : IRequestHandler<DeleteBookingC
             return Unit.Value;
         }
 
+        await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+        _dbContext.BookingAuditLogs.Add(BookingAuditHelpers.CreateAudit(
+            booking.Id,
+            "BookingDeleted",
+            booking.Status,
+            null,
+            _requestContextAccessor));
         _dbContext.Bookings.Remove(booking);
         await _dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
 
         return Unit.Value;
     }
@@ -149,6 +222,33 @@ public sealed class GetBookingsQueryHandler : IRequestHandler<GetBookingsQuery, 
             })
             .ToListAsync(cancellationToken);
     }
+}
+
+internal static class BookingAuditHelpers
+{
+    public static bool IsExclusionConflict(DbUpdateException ex) =>
+        ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.ExclusionViolation };
+
+    public static BookingAuditLog CreateAudit(
+        Guid bookingId,
+        string action,
+        BookingStatus? oldStatus,
+        BookingStatus? newStatus,
+        IRequestContextAccessor requestContextAccessor) => new()
+    {
+        Id = Guid.NewGuid(),
+        BookingId = bookingId,
+        Action = action,
+        OldStatus = oldStatus is null ? null : (int)oldStatus.Value,
+        NewStatus = newStatus is null ? null : (int)newStatus.Value,
+        ActorUserId = requestContextAccessor.UserId,
+        OccurredAtUtc = DateTimeOffset.UtcNow,
+        CorrelationId = string.IsNullOrWhiteSpace(requestContextAccessor.CorrelationId)
+            ? requestContextAccessor.TraceId
+            : requestContextAccessor.CorrelationId,
+        IpAddress = requestContextAccessor.IpAddress,
+        UserAgent = requestContextAccessor.UserAgent
+    };
 }
 
 public sealed class GetBookingByIdQueryHandler : IRequestHandler<GetBookingByIdQuery, BookingDto?>

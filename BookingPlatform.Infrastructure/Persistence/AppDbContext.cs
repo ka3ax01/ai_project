@@ -21,6 +21,7 @@ public class AppDbContext : DbContext
     public DbSet<Equipment> Equipment => Set<Equipment>();
     public DbSet<RoomEquipment> RoomEquipment => Set<RoomEquipment>();
     public DbSet<Booking> Bookings => Set<Booking>();
+    public DbSet<BookingAuditLog> BookingAuditLogs => Set<BookingAuditLog>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<UserRoleEntry> UserRoles => Set<UserRoleEntry>();
     public DbSet<RoomTypeEntry> RoomTypes => Set<RoomTypeEntry>();
@@ -39,6 +40,22 @@ public class AppDbContext : DbContext
         {
             b.ToTable("RoomTypes", "ref");
             b.HasKey(x => x.Id);
+        });
+
+        modelBuilder.Entity<Booking>(b =>
+        {
+            b.Property(x => x.StartTimeUtc).HasColumnName("StartTimeUtc");
+            b.Property(x => x.EndTimeUtc).HasColumnName("EndTimeUtc");
+        });
+
+        modelBuilder.Entity<BookingAuditLog>(b =>
+        {
+            b.ToTable("BookingAuditLogs");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Action).HasMaxLength(128);
+            b.Property(x => x.CorrelationId).HasMaxLength(128);
+            b.Property(x => x.IpAddress).HasMaxLength(64);
+            b.Property(x => x.UserAgent).HasMaxLength(512);
         });
 
         SeedDictionaries(modelBuilder);

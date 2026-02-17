@@ -11,6 +11,7 @@ namespace BookingPlatform.Web.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
+[Produces("application/json")]
 public class BookingsController : ControllerBase
 {
     private readonly IMediator _mediator;
@@ -35,6 +36,9 @@ public class BookingsController : ControllerBase
     }
 
     [HttpPost]
+    [ProducesResponseType(typeof(BookingDto), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<BookingDto>> Create([FromBody] CreateBookingRequest request, CancellationToken cancellationToken)
     {
         var command = new CreateBookingCommand(
@@ -48,6 +52,10 @@ public class BookingsController : ControllerBase
     }
 
     [HttpPatch("{id:guid}/status")]
+    [ProducesResponseType(typeof(BookingDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<BookingDto>> UpdateStatus(Guid id, [FromBody] UpdateBookingStatusCommand command, CancellationToken cancellationToken)
     {
         if (id != command.Id)
