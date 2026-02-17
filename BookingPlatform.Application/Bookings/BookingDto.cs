@@ -7,6 +7,8 @@ public sealed class BookingDto
     public Guid UserId { get; set; }
     public DateTimeOffset StartTimeUtc { get; set; }
     public DateTimeOffset EndTimeUtc { get; set; }
+    public DateTimeOffset? ConfirmByUtc { get; set; }
+    public DateTimeOffset? ConfirmedAtUtc { get; set; }
     public string Status { get; set; } = string.Empty;
     public string Purpose { get; set; } = string.Empty;
     public string RoomName { get; set; } = string.Empty;

@@ -3,6 +3,7 @@ using BookingPlatform.Domain.Bookings;
 using BookingPlatform.Domain.Buildings;
 using BookingPlatform.Domain.Dictionaries;
 using BookingPlatform.Domain.Equipment;
+using BookingPlatform.Domain.Notifications;
 using BookingPlatform.Domain.Rooms;
 using BookingPlatform.Domain.Users;
 using Microsoft.EntityFrameworkCore;
@@ -22,6 +23,7 @@ public class AppDbContext : DbContext
     public DbSet<RoomEquipment> RoomEquipment => Set<RoomEquipment>();
     public DbSet<Booking> Bookings => Set<Booking>();
     public DbSet<BookingAuditLog> BookingAuditLogs => Set<BookingAuditLog>();
+    public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<UserRoleEntry> UserRoles => Set<UserRoleEntry>();
     public DbSet<RoomTypeEntry> RoomTypes => Set<RoomTypeEntry>();
@@ -44,8 +46,8 @@ public class AppDbContext : DbContext
 
         modelBuilder.Entity<Booking>(b =>
         {
-            b.Property(x => x.StartTimeUtc).HasColumnName("StartTimeUtc");
-            b.Property(x => x.EndTimeUtc).HasColumnName("EndTimeUtc");
+            b.Property(x => x.StartTimeUtc).HasColumnName("StartUtc");
+            b.Property(x => x.EndTimeUtc).HasColumnName("EndUtc");
         });
 
         modelBuilder.Entity<BookingAuditLog>(b =>
@@ -56,6 +58,18 @@ public class AppDbContext : DbContext
             b.Property(x => x.CorrelationId).HasMaxLength(128);
             b.Property(x => x.IpAddress).HasMaxLength(64);
             b.Property(x => x.UserAgent).HasMaxLength(512);
+        });
+
+        modelBuilder.Entity<Notification>(b =>
+        {
+            b.ToTable("Notifications");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Type).HasMaxLength(128);
+            b.Property(x => x.PayloadJson).HasColumnType("jsonb");
+            b.Property(x => x.FailReason).HasMaxLength(1024);
+            b.HasIndex(x => x.UserId);
+            b.HasIndex(x => x.Status);
+            b.HasIndex(x => x.CreatedAtUtc);
         });
 
         SeedDictionaries(modelBuilder);

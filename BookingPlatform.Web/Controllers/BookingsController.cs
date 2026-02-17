@@ -4,7 +4,6 @@ using BookingPlatform.Application.Bookings.Queries;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using System.Security.Claims;
 
 namespace BookingPlatform.Web.Controllers;
 
@@ -65,6 +64,16 @@ public class BookingsController : ControllerBase
 
         var updated = await _mediator.Send(command, cancellationToken);
         return Ok(updated);
+    }
+
+    [HttpPost("{id:guid}/confirm")]
+    [ProducesResponseType(typeof(BookingDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<BookingDto>> Confirm(Guid id, CancellationToken cancellationToken)
+    {
+        var confirmed = await _mediator.Send(new ConfirmBookingCommand(id), cancellationToken);
+        return Ok(confirmed);
     }
 
     [HttpDelete("{id:guid}")]

@@ -9,6 +9,8 @@ public sealed class Booking : AuditableEntity
     public Guid UserId { get; set; }
     public DateTimeOffset StartTimeUtc { get; set; }
     public DateTimeOffset EndTimeUtc { get; set; }
+    public DateTimeOffset? ConfirmByUtc { get; set; }
+    public DateTimeOffset? ConfirmedAtUtc { get; set; }
     public BookingStatus Status { get; set; }
     public string Purpose { get; set; } = string.Empty;
     public DateTimeOffset CreatedAtUtc { get; set; }

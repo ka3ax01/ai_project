@@ -23,6 +23,9 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
         {
             BookingConflictException => (StatusCodes.Status409Conflict, "Booking conflict",
                 "The resource is already booked for the requested time range."),
+            BookingNotConfirmableException => (StatusCodes.Status409Conflict, "Booking is not confirmable", exception.Message),
+            BookingConfirmationExpiredException => (StatusCodes.Status409Conflict, "Booking confirmation expired", exception.Message),
+            BookingInvalidStatusTransitionException => (StatusCodes.Status409Conflict, "Invalid booking status transition", exception.Message),
             KeyNotFoundException => (StatusCodes.Status404NotFound, "Not found", exception.Message),
             UnauthorizedAccessException => (StatusCodes.Status403Forbidden, "Forbidden", exception.Message),
             InvalidOperationException => (StatusCodes.Status400BadRequest, "Bad request", exception.Message),

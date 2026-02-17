@@ -3,6 +3,7 @@ using BookingPlatform.Application.Auth;
 using BookingPlatform.Application.Auth.Commands;
 using BookingPlatform.Application.Common;
 using BookingPlatform.Infrastructure.Auth;
+using BookingPlatform.Infrastructure.Bookings;
 using BookingPlatform.Infrastructure.Persistence;
 using BookingPlatform.Web.Middleware;
 using BookingPlatform.Web.Services;
@@ -26,6 +27,8 @@ builder.Services.AddTransient<CorrelationIdMiddleware>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
 builder.Services.AddScoped<IRequestContextAccessor, RequestContextAccessor>();
+builder.Services.Configure<BookingLifecycleOptions>(builder.Configuration.GetSection("BookingLifecycle"));
+builder.Services.AddHostedService<BookingLifecycleBackgroundService>();
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddProblemDetails(options =>
 {
