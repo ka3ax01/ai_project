@@ -27,13 +27,17 @@ public sealed class RegisterUserCommandHandler : IRequestHandler<RegisterUserCom
             throw new InvalidOperationException("User already exists");
         }
 
+        var roleId = Enum.IsDefined(typeof(UserRole), request.RoleId)
+            ? request.RoleId
+            : (int)UserRole.User;
+
         var user = new User
         {
             Id = Guid.NewGuid(),
             Username = request.Username,
             Email = request.Email,
             PasswordHash = PasswordHasher.Hash(request.Password),
-            Role = UserRole.User,
+            RoleId = roleId,
             CreatedBy = UserConstants.SystemUserId
         };
 

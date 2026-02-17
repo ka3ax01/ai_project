@@ -1,14 +1,11 @@
 using System.ComponentModel.DataAnnotations;
-using BookingPlatform.Application.Buildings;
-using BookingPlatform.Application.Buildings.Queries;
-using BookingPlatform.Application.Rooms.Commands;
-using BookingPlatform.Domain.Dictionaries;
+using BookingPlatform.Application.Bookings.Commands;
 using BookingPlatform.Infrastructure.Persistence;
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
-namespace BookingPlatform.Web.Pages.Admin.Rooms;
+namespace BookingPlatform.Web.Pages.Admin.Bookings;
 
 public class CreateModel : AdminPageModel
 {
@@ -21,34 +18,29 @@ public class CreateModel : AdminPageModel
         _dbContext = dbContext;
     }
 
-    public IReadOnlyList<BuildingDto> Buildings { get; private set; } = Array.Empty<BuildingDto>();
-    public IReadOnlyList<RoomTypeEntry> RoomTypes { get; private set; } = Array.Empty<RoomTypeEntry>();
+    public IReadOnlyList<(Guid Id, string Label)> Rooms { get; private set; } = Array.Empty<(Guid, string)>();
 
     [BindProperty]
     [Required]
-    public Guid BuildingId { get; set; }
+    public Guid RoomId { get; set; }
 
     [BindProperty]
     [Required]
-    public string Number { get; set; } = string.Empty;
-
-    [BindProperty]
-    public int Floor { get; set; }
-
-    [BindProperty]
-    public int Capacity { get; set; }
+    public DateTimeOffset StartTimeUtc { get; set; }
 
     [BindProperty]
     [Required]
-    public int RoomTypeId { get; set; }
+    public DateTimeOffset EndTimeUtc { get; set; }
 
     [BindProperty]
-    public bool IsActive { get; set; } = true;
+    public string Purpose { get; set; } = string.Empty;
 
     private async Task LoadLookupsAsync(CancellationToken cancellationToken)
     {
-        Buildings = await _mediator.Send(new GetBuildingsQuery(), cancellationToken);
-        RoomTypes = await _dbContext.RoomTypes.AsNoTracking().ToListAsync(cancellationToken);
+        Rooms = await _dbContext.Rooms
+            .AsNoTracking()
+            .Select(r => new ValueTuple<Guid, string>(r.Id, r.Number))
+            .ToListAsync(cancellationToken);
     }
 
     public async Task<IActionResult> OnGet(CancellationToken cancellationToken)
@@ -78,7 +70,10 @@ public class CreateModel : AdminPageModel
             return Page();
         }
 
-        await _mediator.Send(new CreateRoomCommand(BuildingId, Number, Floor, Capacity, RoomTypeId, IsActive), cancellationToken);
+        var command = new CreateBookingCommand(RoomId, StartTimeUtc, EndTimeUtc, Purpose);
+        await _mediator.Send(command, cancellationToken);
+
         return RedirectToPage("Index");
     }
 }
+

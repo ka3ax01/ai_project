@@ -1,9 +1,11 @@
 using System.Text;
 using BookingPlatform.Application.Auth;
 using BookingPlatform.Application.Auth.Commands;
+using BookingPlatform.Application.Common;
 using BookingPlatform.Infrastructure.Auth;
 using BookingPlatform.Infrastructure.Persistence;
 using BookingPlatform.Web.Middleware;
+using BookingPlatform.Web.Services;
 using MediatR;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
@@ -20,6 +22,8 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection("Jwt"));
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 builder.Services.AddTransient<ExceptionHandlingMiddleware>();
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
 
 // MediatR (сканируем Application и Infrastructure сборки).
 builder.Services.AddMediatR(

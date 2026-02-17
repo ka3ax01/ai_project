@@ -9,5 +9,6 @@ public sealed class BookingDto
     public DateTimeOffset EndTimeUtc { get; set; }
     public string Status { get; set; } = string.Empty;
     public string Purpose { get; set; } = string.Empty;
+    public string RoomName { get; set; } = string.Empty;
+    public string Username { get; set; } = string.Empty;
 }
-

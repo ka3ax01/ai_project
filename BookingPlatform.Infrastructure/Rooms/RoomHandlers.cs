@@ -9,6 +9,21 @@ using Microsoft.EntityFrameworkCore;
 
 namespace BookingPlatform.Infrastructure.Rooms;
 
+internal static class RoomMappings
+{
+    public static RoomDto ToDto(Room room) => new()
+    {
+        Id = room.Id,
+        BuildingId = room.BuildingId,
+        Number = room.Number,
+        Floor = room.Floor,
+        Capacity = room.Capacity,
+        RoomTypeId = room.RoomTypeId,
+        RoomType = ((RoomType)room.RoomTypeId).ToString(),
+        IsActive = room.IsActive
+    };
+}
+
 public sealed class CreateRoomCommandHandler : IRequestHandler<CreateRoomCommand, RoomDto>
 {
     private readonly AppDbContext _dbContext;
@@ -20,6 +35,10 @@ public sealed class CreateRoomCommandHandler : IRequestHandler<CreateRoomCommand
 
     public async Task<RoomDto> Handle(CreateRoomCommand request, CancellationToken cancellationToken)
     {
+        var roomTypeId = Enum.IsDefined(typeof(RoomType), request.RoomTypeId)
+            ? request.RoomTypeId
+            : (int)RoomType.Lecture;
+
         var room = new Room
         {
             Id = Guid.NewGuid(),
@@ -27,26 +46,15 @@ public sealed class CreateRoomCommandHandler : IRequestHandler<CreateRoomCommand
             Number = request.Number,
             Floor = request.Floor,
             Capacity = request.Capacity,
-            RoomType = Enum.Parse<RoomType>(request.RoomType, ignoreCase: true),
+            RoomTypeId = roomTypeId,
             IsActive = request.IsActive
         };
 
         _dbContext.Rooms.Add(room);
         await _dbContext.SaveChangesAsync(cancellationToken);
 
-        return ToDto(room);
+        return RoomMappings.ToDto(room);
     }
-
-    private static RoomDto ToDto(Room room) => new()
-    {
-        Id = room.Id,
-        BuildingId = room.BuildingId,
-        Number = room.Number,
-        Floor = room.Floor,
-        Capacity = room.Capacity,
-        RoomType = room.RoomType.ToString(),
-        IsActive = room.IsActive
-    };
 }
 
 public sealed class UpdateRoomCommandHandler : IRequestHandler<UpdateRoomCommand, RoomDto>
@@ -70,21 +78,17 @@ public sealed class UpdateRoomCommandHandler : IRequestHandler<UpdateRoomCommand
         room.Number = request.Number;
         room.Floor = request.Floor;
         room.Capacity = request.Capacity;
-        room.RoomType = Enum.Parse<RoomType>(request.RoomType, ignoreCase: true);
+
+        var roomTypeId = Enum.IsDefined(typeof(RoomType), request.RoomTypeId)
+            ? request.RoomTypeId
+            : room.RoomTypeId;
+
+        room.RoomTypeId = roomTypeId;
         room.IsActive = request.IsActive;
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 
-        return new RoomDto
-        {
-            Id = room.Id,
-            BuildingId = room.BuildingId,
-            Number = room.Number,
-            Floor = room.Floor,
-            Capacity = room.Capacity,
-            RoomType = room.RoomType.ToString(),
-            IsActive = room.IsActive
-        };
+        return RoomMappings.ToDto(room);
     }
 }
 
@@ -124,16 +128,7 @@ public sealed class GetRoomsQueryHandler : IRequestHandler<GetRoomsQuery, IReadO
     public async Task<IReadOnlyList<RoomDto>> Handle(GetRoomsQuery request, CancellationToken cancellationToken)
     {
         return await _dbContext.Rooms.AsNoTracking()
-            .Select(r => new RoomDto
-            {
-                Id = r.Id,
-                BuildingId = r.BuildingId,
-                Number = r.Number,
-                Floor = r.Floor,
-                Capacity = r.Capacity,
-                RoomType = r.RoomType.ToString(),
-                IsActive = r.IsActive
-            })
+            .Select(r => RoomMappings.ToDto(r))
             .ToListAsync(cancellationToken);
     }
 }
@@ -154,16 +149,6 @@ public sealed class GetRoomByIdQueryHandler : IRequestHandler<GetRoomByIdQuery, 
 
         return room is null
             ? null
-            : new RoomDto
-            {
-                Id = room.Id,
-                BuildingId = room.BuildingId,
-                Number = room.Number,
-                Floor = room.Floor,
-                Capacity = room.Capacity,
-                RoomType = room.RoomType.ToString(),
-                IsActive = room.IsActive
-            };
+            : RoomMappings.ToDto(room);
     }
 }
-

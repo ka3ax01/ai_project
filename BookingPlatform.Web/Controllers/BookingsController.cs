@@ -4,6 +4,7 @@ using BookingPlatform.Application.Bookings.Queries;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 
 namespace BookingPlatform.Web.Controllers;
 
@@ -34,8 +35,14 @@ public class BookingsController : ControllerBase
     }
 
     [HttpPost]
-    public async Task<ActionResult<BookingDto>> Create([FromBody] CreateBookingCommand command, CancellationToken cancellationToken)
+    public async Task<ActionResult<BookingDto>> Create([FromBody] CreateBookingRequest request, CancellationToken cancellationToken)
     {
+        var command = new CreateBookingCommand(
+            request.RoomId,
+            request.StartTimeUtc,
+            request.EndTimeUtc,
+            request.Purpose);
+
         var created = await _mediator.Send(command, cancellationToken);
         return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
     }
@@ -58,4 +65,12 @@ public class BookingsController : ControllerBase
         await _mediator.Send(new DeleteBookingCommand(id), cancellationToken);
         return NoContent();
     }
+}
+
+public sealed class CreateBookingRequest
+{
+    public Guid RoomId { get; set; }
+    public DateTimeOffset StartTimeUtc { get; set; }
+    public DateTimeOffset EndTimeUtc { get; set; }
+    public string Purpose { get; set; } = string.Empty;
 }

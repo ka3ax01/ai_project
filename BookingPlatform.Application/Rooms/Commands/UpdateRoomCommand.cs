@@ -9,7 +9,6 @@ public sealed record UpdateRoomCommand(
     string Number,
     int Floor,
     int Capacity,
-    string RoomType,
+    int RoomTypeId,
     bool IsActive
 ) : IRequest<RoomDto>;
-

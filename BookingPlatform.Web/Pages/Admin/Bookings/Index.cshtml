@@ -7,6 +7,10 @@
 <h1>Bookings</h1>
 
 <p>
+    <a asp-page="Create">Create booking</a>
+</p>
+
+<p>
     <a asp-page="/Admin/Index">Back to admin panel</a>
 </p>
 
@@ -19,20 +23,29 @@
         <th>End</th>
         <th>Status</th>
         <th>Purpose</th>
+        <th>Actions</th>
     </tr>
     </thead>
     <tbody>
     @foreach (var booking in Model.Bookings)
     {
-        <tr>
-            <td>@booking.RoomId</td>
-            <td>@booking.UserId</td>
-            <td>@booking.StartTimeUtc</td>
-            <td>@booking.EndTimeUtc</td>
+        var rowClass = booking.Status == "Cancelled" ? "table-secondary" : string.Empty;
+        <tr class="@rowClass">
+            <td>@booking.RoomName (@booking.RoomId)</td>
+            <td>@booking.Username (@booking.UserId)</td>
+            <td>@booking.StartTimeUtc.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</td>
+            <td>@booking.EndTimeUtc.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</td>
             <td>@booking.Status</td>
             <td>@booking.Purpose</td>
+            <td>
+                @if (booking.Status != "Cancelled")
+                {
+                    <form method="post" asp-page-handler="Cancel" asp-route-id="@booking.Id" class="d-inline">
+                        <button type="submit" class="btn btn-sm btn-warning">Cancel</button>
+                    </form>
+                }
+            </td>
         </tr>
     }
     </tbody>
 </table>
-

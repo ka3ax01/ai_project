@@ -3,6 +3,7 @@ using System;
 using BookingPlatform.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace BookingPlatform.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20251226142702_AddDictionaryTables")]
+    partial class AddDictionaryTables
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -331,7 +334,7 @@ namespace BookingPlatform.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<int>("RoomTypeId")
+                    b.Property<int>("RoomType")
                         .HasColumnType("integer");
 
                     b.HasKey("Id");
@@ -365,7 +368,7 @@ namespace BookingPlatform.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<int>("RoleId")
+                    b.Property<int>("Role")
                         .HasColumnType("integer");
 
                     b.Property<string>("Username")

@@ -20,6 +20,7 @@ public class RoomsController : ControllerBase
     }
 
     [HttpGet]
+    [AllowAnonymous]
     public async Task<ActionResult<IReadOnlyList<RoomDto>>> GetAll(CancellationToken cancellationToken)
     {
         var result = await _mediator.Send(new GetRoomsQuery(), cancellationToken);

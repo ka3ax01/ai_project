@@ -9,6 +9,6 @@ public sealed class Room : AuditableEntity
     public string Number { get; set; } = string.Empty;
     public int Floor { get; set; }
     public int Capacity { get; set; }
-    public RoomType RoomType { get; set; }
+    public int RoomTypeId { get; set; }
     public bool IsActive { get; set; }
 }

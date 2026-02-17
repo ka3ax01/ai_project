@@ -1,6 +1,7 @@
 using BookingPlatform.Domain.Auth;
 using BookingPlatform.Domain.Bookings;
 using BookingPlatform.Domain.Buildings;
+using BookingPlatform.Domain.Dictionaries;
 using BookingPlatform.Domain.Equipment;
 using BookingPlatform.Domain.Rooms;
 using BookingPlatform.Domain.Users;
@@ -21,10 +22,43 @@ public class AppDbContext : DbContext
     public DbSet<RoomEquipment> RoomEquipment => Set<RoomEquipment>();
     public DbSet<Booking> Bookings => Set<Booking>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
+    public DbSet<UserRoleEntry> UserRoles => Set<UserRoleEntry>();
+    public DbSet<RoomTypeEntry> RoomTypes => Set<RoomTypeEntry>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
-        // Здесь позже добавим конфигурации сущностей
+        // Справочники в отдельной схеме ref.
+        modelBuilder.Entity<UserRoleEntry>(b =>
+        {
+            b.ToTable("UserRoles", "ref");
+            b.HasKey(x => x.Id);
+        });
+
+        modelBuilder.Entity<RoomTypeEntry>(b =>
+        {
+            b.ToTable("RoomTypes", "ref");
+            b.HasKey(x => x.Id);
+        });
+
+        SeedDictionaries(modelBuilder);
+    }
+
+    private static void SeedDictionaries(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<UserRoleEntry>().HasData(
+            new UserRoleEntry { Id = 1, Code = "SYSTEM", Name = "System" },
+            new UserRoleEntry { Id = 2, Code = "ADMIN", Name = "Admin" },
+            new UserRoleEntry { Id = 3, Code = "USER", Name = "User" },
+            new UserRoleEntry { Id = 4, Code = "EMPLOYEE", Name = "Employee" }
+        );
+
+        modelBuilder.Entity<RoomTypeEntry>().HasData(
+            new RoomTypeEntry { Id = 1, Code = "LECTURE", Name = "Lecture" },
+            new RoomTypeEntry { Id = 2, Code = "LAB", Name = "Lab" },
+            new RoomTypeEntry { Id = 3, Code = "SEMINAR", Name = "Seminar" },
+            new RoomTypeEntry { Id = 4, Code = "MEETING", Name = "Meeting" },
+            new RoomTypeEntry { Id = 5, Code = "OTHER", Name = "Other" }
+        );
     }
 }

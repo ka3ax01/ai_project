@@ -1,4 +1,5 @@
 using BookingPlatform.Application.Bookings;
+using BookingPlatform.Application.Bookings.Commands;
 using BookingPlatform.Application.Bookings.Queries;
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
@@ -26,6 +27,18 @@ public class IndexModel : AdminPageModel
 
         Bookings = await _mediator.Send(new GetBookingsQuery(), cancellationToken);
         return Page();
+    }
+
+    public async Task<IActionResult> OnPostCancel(Guid id, CancellationToken cancellationToken)
+    {
+        var redirect = RequireAdmin();
+        if (redirect != null)
+        {
+            return redirect;
+        }
+
+        await _mediator.Send(new UpdateBookingStatusCommand(id, "Cancelled"), cancellationToken);
+        return RedirectToPage();
     }
 }
 

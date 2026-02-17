@@ -1,0 +1,42 @@
+@page
+@model BookingPlatform.Web.Pages.Admin.Bookings.CreateModel
+@{
+    ViewData["Title"] = "Create booking";
+}
+
+<h1>Create booking</h1>
+
+<p>
+    <a asp-page="/Admin/Bookings/Index">Back to bookings</a> |
+    <a asp-page="/Admin/Index">Back to admin panel</a>
+</p>
+
+<form method="post">
+    <div class="form-group">
+        <label asp-for="RoomId"></label>
+        <select asp-for="RoomId" class="form-control">
+            <option value="">-- select room --</option>
+            @foreach (var r in Model.Rooms)
+            {
+                <option value="@r.Id">@r.Label</option>
+            }
+        </select>
+        <span asp-validation-for="RoomId" class="text-danger"></span>
+    </div>
+    <div class="form-group">
+        <label asp-for="StartTimeUtc"></label>
+        <input asp-for="StartTimeUtc" class="form-control" type="datetime-local" />
+        <span asp-validation-for="StartTimeUtc" class="text-danger"></span>
+    </div>
+    <div class="form-group">
+        <label asp-for="EndTimeUtc"></label>
+        <input asp-for="EndTimeUtc" class="form-control" type="datetime-local" />
+        <span asp-validation-for="EndTimeUtc" class="text-danger"></span>
+    </div>
+    <div class="form-group">
+        <label asp-for="Purpose"></label>
+        <input asp-for="Purpose" class="form-control" />
+        <span asp-validation-for="Purpose" class="text-danger"></span>
+    </div>
+    <button type="submit" class="btn btn-primary">Save</button>
+</form>

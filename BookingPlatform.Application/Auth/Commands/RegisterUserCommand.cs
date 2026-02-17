@@ -6,6 +6,6 @@ namespace BookingPlatform.Application.Auth.Commands;
 public sealed record RegisterUserCommand(
     string Username,
     string Email,
-    string Password
+    string Password,
+    int RoleId
 ) : IRequest<AuthResultDto>;
-

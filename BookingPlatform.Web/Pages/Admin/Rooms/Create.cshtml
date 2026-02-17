@@ -14,7 +14,13 @@
 <form method="post">
     <div class="form-group">
         <label asp-for="BuildingId"></label>
-        <input asp-for="BuildingId" class="form-control" />
+        <select asp-for="BuildingId" class="form-control">
+            <option value="">-- select building --</option>
+            @foreach (var b in Model.Buildings)
+            {
+                <option value="@b.Id">@b.Name (@b.Code)</option>
+            }
+        </select>
         <span asp-validation-for="BuildingId" class="text-danger"></span>
     </div>
     <div class="form-group">
@@ -33,9 +39,15 @@
         <span asp-validation-for="Capacity" class="text-danger"></span>
     </div>
     <div class="form-group">
-        <label asp-for="RoomType"></label>
-        <input asp-for="RoomType" class="form-control" />
-        <span asp-validation-for="RoomType" class="text-danger"></span>
+        <label asp-for="RoomTypeId"></label>
+        <select asp-for="RoomTypeId" class="form-control">
+            <option value="">-- select room type --</option>
+            @foreach (var t in Model.RoomTypes)
+            {
+                <option value="@t.Id">@t.Name (@t.Code)</option>
+            }
+        </select>
+        <span asp-validation-for="RoomTypeId" class="text-danger"></span>
     </div>
     <div class="form-group form-check">
         <input asp-for="IsActive" class="form-check-input" />
@@ -43,4 +55,3 @@
     </div>
     <button type="submit" class="btn btn-primary">Save</button>
 </form>
-

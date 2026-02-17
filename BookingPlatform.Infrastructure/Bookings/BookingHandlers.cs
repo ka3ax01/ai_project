@@ -1,6 +1,7 @@
 using BookingPlatform.Application.Bookings;
 using BookingPlatform.Application.Bookings.Commands;
 using BookingPlatform.Application.Bookings.Queries;
+using BookingPlatform.Application.Common;
 using BookingPlatform.Domain.Bookings;
 using BookingPlatform.Domain.Enums;
 using BookingPlatform.Infrastructure.Persistence;
@@ -12,24 +13,30 @@ namespace BookingPlatform.Infrastructure.Bookings;
 public sealed class CreateBookingCommandHandler : IRequestHandler<CreateBookingCommand, BookingDto>
 {
     private readonly AppDbContext _dbContext;
+    private readonly ICurrentUserService _currentUserService;
 
-    public CreateBookingCommandHandler(AppDbContext dbContext)
+    public CreateBookingCommandHandler(AppDbContext dbContext, ICurrentUserService currentUserService)
     {
         _dbContext = dbContext;
+        _currentUserService = currentUserService;
     }
 
     public async Task<BookingDto> Handle(CreateBookingCommand request, CancellationToken cancellationToken)
     {
+        var currentUserId = _currentUserService.UserId
+                            ?? throw new InvalidOperationException("Current user is not resolved.");
+
         var booking = new Booking
         {
             Id = Guid.NewGuid(),
             RoomId = request.RoomId,
-            UserId = request.UserId,
-            StartTimeUtc = request.StartTimeUtc,
-            EndTimeUtc = request.EndTimeUtc,
+            UserId = currentUserId,
+            StartTimeUtc = request.StartTimeUtc.ToUniversalTime(),
+            EndTimeUtc = request.EndTimeUtc.ToUniversalTime(),
             Status = BookingStatus.Pending,
             Purpose = request.Purpose,
-            CreatedAtUtc = DateTimeOffset.UtcNow
+            CreatedAtUtc = DateTimeOffset.UtcNow,
+            CreatedBy = currentUserId,
         };
 
         _dbContext.Bookings.Add(booking);
@@ -118,16 +125,27 @@ public sealed class GetBookingsQueryHandler : IRequestHandler<GetBookingsQuery, 
 
     public async Task<IReadOnlyList<BookingDto>> Handle(GetBookingsQuery request, CancellationToken cancellationToken)
     {
-        return await _dbContext.Bookings.AsNoTracking()
-            .Select(b => new BookingDto
+        return await _dbContext.Bookings
+            .AsNoTracking()
+            .Join(_dbContext.Rooms.AsNoTracking(),
+                b => b.RoomId,
+                r => r.Id,
+                (b, r) => new { b, r })
+            .Join(_dbContext.Users.AsNoTracking(),
+                x => x.b.UserId,
+                u => u.Id,
+                (x, u) => new { x.b, x.r, u })
+            .Select(x => new BookingDto
             {
-                Id = b.Id,
-                RoomId = b.RoomId,
-                UserId = b.UserId,
-                StartTimeUtc = b.StartTimeUtc,
-                EndTimeUtc = b.EndTimeUtc,
-                Status = b.Status.ToString(),
-                Purpose = b.Purpose
+                Id = x.b.Id,
+                RoomId = x.b.RoomId,
+                UserId = x.b.UserId,
+                StartTimeUtc = x.b.StartTimeUtc.ToLocalTime(),
+                EndTimeUtc = x.b.EndTimeUtc.ToLocalTime(),
+                Status = x.b.Status.ToString(),
+                Purpose = x.b.Purpose,
+                RoomName = x.r.Number,
+                Username = x.u.Username
             })
             .ToListAsync(cancellationToken);
     }
@@ -144,21 +162,30 @@ public sealed class GetBookingByIdQueryHandler : IRequestHandler<GetBookingByIdQ
 
     public async Task<BookingDto?> Handle(GetBookingByIdQuery request, CancellationToken cancellationToken)
     {
-        var booking = await _dbContext.Bookings.AsNoTracking()
-            .FirstOrDefaultAsync(b => b.Id == request.Id, cancellationToken);
+        var result = await _dbContext.Bookings
+            .AsNoTracking()
+            .Where(b => b.Id == request.Id)
+            .Join(_dbContext.Rooms.AsNoTracking(),
+                b => b.RoomId,
+                r => r.Id,
+                (b, r) => new { b, r })
+            .Join(_dbContext.Users.AsNoTracking(),
+                x => x.b.UserId,
+                u => u.Id,
+                (x, u) => new BookingDto
+                {
+                    Id = x.b.Id,
+                    RoomId = x.b.RoomId,
+                    UserId = x.b.UserId,
+                    StartTimeUtc = x.b.StartTimeUtc,
+                    EndTimeUtc = x.b.EndTimeUtc,
+                    Status = x.b.Status.ToString(),
+                    Purpose = x.b.Purpose,
+                    RoomName = x.r.Number,
+                    Username = u.Username
+                })
+            .FirstOrDefaultAsync(cancellationToken);
 
-        return booking is null
-            ? null
-            : new BookingDto
-            {
-                Id = booking.Id,
-                RoomId = booking.RoomId,
-                UserId = booking.UserId,
-                StartTimeUtc = booking.StartTimeUtc,
-                EndTimeUtc = booking.EndTimeUtc,
-                Status = booking.Status.ToString(),
-                Purpose = booking.Purpose
-            };
+        return result;
     }
 }
-
