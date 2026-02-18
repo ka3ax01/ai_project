@@ -15,38 +15,53 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
         _logger = logger;
     }
 
-    public async ValueTask<bool> TryHandleAsync(HttpContext httpContext, Exception exception, CancellationToken cancellationToken)
+    public async ValueTask<bool> TryHandleAsync(
+    HttpContext httpContext,
+    Exception exception,
+    CancellationToken cancellationToken)
+{
+    _logger.LogError(exception, "Unhandled exception");
+
+    var (status, title, detail) = exception switch
     {
-        _logger.LogError(exception, "Unhandled exception");
+        BookingConflictException => (StatusCodes.Status409Conflict, "Booking conflict",
+            "The resource is already booked for the requested time range."),
+        BookingNotConfirmableException => (StatusCodes.Status409Conflict, "Booking is not confirmable", exception.Message),
+        BookingConfirmationExpiredException => (StatusCodes.Status409Conflict, "Booking confirmation expired", exception.Message),
+        BookingInvalidStatusTransitionException => (StatusCodes.Status409Conflict, "Invalid booking status transition", exception.Message),
+        KeyNotFoundException => (StatusCodes.Status404NotFound, "Not found", exception.Message),
+        UnauthorizedAccessException => (StatusCodes.Status403Forbidden, "Forbidden", exception.Message),
+        InvalidOperationException => (StatusCodes.Status400BadRequest, "Bad request", exception.Message),
+        _ => (StatusCodes.Status500InternalServerError, "Server error", "An unexpected error occurred.")
+    };
 
-        var (status, title, detail) = exception switch
-        {
-            BookingConflictException => (StatusCodes.Status409Conflict, "Booking conflict",
-                "The resource is already booked for the requested time range."),
-            BookingNotConfirmableException => (StatusCodes.Status409Conflict, "Booking is not confirmable", exception.Message),
-            BookingConfirmationExpiredException => (StatusCodes.Status409Conflict, "Booking confirmation expired", exception.Message),
-            BookingInvalidStatusTransitionException => (StatusCodes.Status409Conflict, "Invalid booking status transition", exception.Message),
-            KeyNotFoundException => (StatusCodes.Status404NotFound, "Not found", exception.Message),
-            UnauthorizedAccessException => (StatusCodes.Status403Forbidden, "Forbidden", exception.Message),
-            InvalidOperationException => (StatusCodes.Status400BadRequest, "Bad request", exception.Message),
-            _ => (StatusCodes.Status500InternalServerError, "Server error", "An unexpected error occurred.")
-        };
+    // ✅ ВАЖНО: выставляем HTTP статус ответа
+    httpContext.Response.StatusCode = status;
 
-        var problemDetails = new ProblemDetails
-        {
-            Status = status,
-            Title = title,
-            Detail = detail
-        };
-        problemDetails.Extensions["correlationId"] = httpContext.TraceIdentifier;
-        problemDetails.Extensions["traceId"] = httpContext.TraceIdentifier;
+    // ✅ желательно явно указать ProblemDetails content-type
+    httpContext.Response.ContentType = "application/problem+json";
 
-        await _problemDetailsService.WriteAsync(new ProblemDetailsContext
-        {
-            HttpContext = httpContext,
-            ProblemDetails = problemDetails
-        });
+    var problemDetails = new ProblemDetails
+    {
+        Status = status,
+        Title = title,
+        Detail = detail,
+        Instance = httpContext.Request.Path
+    };
 
-        return true;
-    }
+    // ✅ у тебя correlation/trace одинаковые — лучше разделить
+    problemDetails.Extensions["correlationId"] =
+        httpContext.Request.Headers.TryGetValue("X-Correlation-Id", out var cid) ? cid.ToString() : httpContext.TraceIdentifier;
+
+    problemDetails.Extensions["traceId"] = httpContext.TraceIdentifier;
+
+    await _problemDetailsService.WriteAsync(new ProblemDetailsContext
+    {
+        HttpContext = httpContext,
+        ProblemDetails = problemDetails
+    });
+
+    return true;
+}
+
 }
