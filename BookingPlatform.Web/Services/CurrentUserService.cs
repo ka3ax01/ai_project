@@ -32,29 +32,41 @@ public sealed class CurrentUserService : ICurrentUserService
                 return id;
             }
 
-            if (httpContext.Request.Cookies.TryGetValue("AdminAccessToken", out var token) &&
-                !string.IsNullOrWhiteSpace(token))
+            if (TryResolveFromCookie(httpContext, "UserAccessToken", out id))
             {
-                var handler = new JwtSecurityTokenHandler();
-                try
-                {
-                    var jwt = handler.ReadJwtToken(token);
-                    var sub = jwt.Claims.FirstOrDefault(c =>
-                        c.Type == JwtRegisteredClaimNames.Sub || c.Type == ClaimTypes.NameIdentifier)?.Value;
+                return id;
+            }
 
-                    if (Guid.TryParse(sub, out id))
-                    {
-                        return id;
-                    }
-                }
-                catch
-                {
-                    // ignore and fall through
-                }
+            if (TryResolveFromCookie(httpContext, "AdminAccessToken", out id))
+            {
+                return id;
             }
 
             return null;
         }
     }
-}
 
+    private static bool TryResolveFromCookie(HttpContext httpContext, string cookieName, out Guid id)
+    {
+        id = default;
+
+        if (!httpContext.Request.Cookies.TryGetValue(cookieName, out var token) || string.IsNullOrWhiteSpace(token))
+        {
+            return false;
+        }
+
+        var handler = new JwtSecurityTokenHandler();
+        try
+        {
+            var jwt = handler.ReadJwtToken(token);
+            var sub = jwt.Claims.FirstOrDefault(c =>
+                c.Type == JwtRegisteredClaimNames.Sub || c.Type == ClaimTypes.NameIdentifier)?.Value;
+
+            return Guid.TryParse(sub, out id);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+}

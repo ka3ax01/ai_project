@@ -31,25 +31,14 @@ public sealed class RequestContextAccessor : IRequestContextAccessor
                 return userId;
             }
 
-            if (context.Request.Cookies.TryGetValue("AdminAccessToken", out var token) &&
-                !string.IsNullOrWhiteSpace(token))
+            if (TryResolveFromCookie(context, "UserAccessToken", out userId))
             {
-                var handler = new JwtSecurityTokenHandler();
-                try
-                {
-                    var jwt = handler.ReadJwtToken(token);
-                    var sub = jwt.Claims.FirstOrDefault(c =>
-                        c.Type == JwtRegisteredClaimNames.Sub || c.Type == ClaimTypes.NameIdentifier)?.Value;
+                return userId;
+            }
 
-                    if (Guid.TryParse(sub, out userId))
-                    {
-                        return userId;
-                    }
-                }
-                catch
-                {
-                    return null;
-                }
+            if (TryResolveFromCookie(context, "AdminAccessToken", out userId))
+            {
+                return userId;
             }
 
             return null;
@@ -76,4 +65,28 @@ public sealed class RequestContextAccessor : IRequestContextAccessor
     public string? IpAddress => _httpContextAccessor.HttpContext?.Connection.RemoteIpAddress?.ToString();
 
     public string? UserAgent => _httpContextAccessor.HttpContext?.Request.Headers.UserAgent.ToString();
+
+    private static bool TryResolveFromCookie(HttpContext context, string cookieName, out Guid userId)
+    {
+        userId = default;
+
+        if (!context.Request.Cookies.TryGetValue(cookieName, out var token) || string.IsNullOrWhiteSpace(token))
+        {
+            return false;
+        }
+
+        var handler = new JwtSecurityTokenHandler();
+        try
+        {
+            var jwt = handler.ReadJwtToken(token);
+            var sub = jwt.Claims.FirstOrDefault(c =>
+                c.Type == JwtRegisteredClaimNames.Sub || c.Type == ClaimTypes.NameIdentifier)?.Value;
+
+            return Guid.TryParse(sub, out userId);
+        }
+        catch
+        {
+            return false;
+        }
+    }
 }

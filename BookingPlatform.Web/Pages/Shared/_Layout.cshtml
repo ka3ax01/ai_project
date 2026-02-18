@@ -9,6 +9,38 @@
     <link rel="stylesheet" href="~/BookingPlatform.Web.styles.css" asp-append-version="true" />
 </head>
 <body>
+    @{
+        var isAuthenticated = false;
+        var isAdmin = false;
+        var accessToken = string.Empty;
+
+        if (Context.Request.Cookies.TryGetValue("UserAccessToken", out var userToken) && !string.IsNullOrWhiteSpace(userToken))
+        {
+            isAuthenticated = true;
+            accessToken = userToken;
+        }
+        else if (Context.Request.Cookies.TryGetValue("AdminAccessToken", out var adminToken) && !string.IsNullOrWhiteSpace(adminToken))
+        {
+            isAuthenticated = true;
+            accessToken = adminToken;
+        }
+
+        if (!string.IsNullOrWhiteSpace(accessToken))
+        {
+            try
+            {
+                var handler = new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler();
+                var jwt = handler.ReadJwtToken(accessToken);
+                var role = jwt.Claims.FirstOrDefault(c => c.Type == System.Security.Claims.ClaimTypes.Role)?.Value ?? string.Empty;
+                isAdmin = string.Equals(role, "Admin", StringComparison.OrdinalIgnoreCase);
+            }
+            catch
+            {
+                isAuthenticated = false;
+                isAdmin = false;
+            }
+        }
+    }
     <header>
         <nav class="navbar navbar-expand-sm navbar-toggleable-sm navbar-light bg-white border-bottom box-shadow mb-3">
             <div class="container">
@@ -22,9 +54,30 @@
                         <li class="nav-item">
                             <a class="nav-link text-dark" asp-area="" asp-page="/Index">Home</a>
                         </li>
-                        <li class="nav-item">
-                            <a class="nav-link text-dark" asp-area="" asp-page="/Privacy">Privacy</a>
-                        </li>
+                        @if (isAuthenticated)
+                        {
+                            <li class="nav-item">
+                                <a class="nav-link text-dark" asp-area="" asp-page="/Bookings/Create">Create Booking</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link text-dark" asp-area="" asp-page="/Bookings/My">My Bookings</a>
+                            </li>
+                            @if (isAdmin)
+                            {
+                                <li class="nav-item">
+                                    <a class="nav-link text-dark" asp-area="" asp-page="/Admin/Index">Admin</a>
+                                </li>
+                            }
+                            <li class="nav-item">
+                                <a class="nav-link text-dark" asp-area="" asp-page="/Logout">Logout</a>
+                            </li>
+                        }
+                        else
+                        {
+                            <li class="nav-item">
+                                <a class="nav-link text-dark" asp-area="" asp-page="/Login">Login</a>
+                            </li>
+                        }
                     </ul>
                 </div>
             </div>

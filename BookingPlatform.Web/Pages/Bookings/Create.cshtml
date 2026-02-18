@@ -1,0 +1,258 @@
+@page
+@model BookingPlatform.Web.Pages.Bookings.CreateModel
+@{
+    ViewData["Title"] = "Create Booking";
+}
+
+<div class="row g-4">
+    <div class="col-lg-7">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h1 class="h4 mb-3">Create Booking</h1>
+
+                <input type="hidden" id="initialAccessToken" value="@Model.InitialAccessToken" />
+
+                <form id="bookingForm" class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label" for="buildingId">Building</label>
+                        <select class="form-select" id="buildingId" required>
+                            <option value="">Select building</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label" for="roomId">Room</label>
+                        <select class="form-select" id="roomId" required>
+                            <option value="">Select room</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label" for="bookingDate">Date (UTC)</label>
+                        <input class="form-control" id="bookingDate" type="date" required />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label" for="startTime">Start (UTC)</label>
+                        <input class="form-control" id="startTime" type="time" required />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label" for="endTime">End (UTC)</label>
+                        <input class="form-control" id="endTime" type="time" required />
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label" for="purpose">Purpose</label>
+                        <input class="form-control" id="purpose" type="text" maxlength="200" />
+                    </div>
+                    <div class="col-12 d-flex gap-2">
+                        <button class="btn btn-primary" type="submit">Create booking</button>
+                        <button class="btn btn-outline-secondary d-none" id="loadAlternativesBtn" type="button">Show alternatives</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div id="bookingAlert" class="mt-3"></div>
+    </div>
+
+    <div class="col-lg-5">
+        @await Html.PartialAsync("_PlannerAlternatives")
+    </div>
+</div>
+
+@section Scripts {
+<script>
+(() => {
+    let buildings = [];
+    let rooms = [];
+    let lastPlannerPayload = null;
+
+    const $building = $("#buildingId");
+    const $room = $("#roomId");
+    const $alert = $("#bookingAlert");
+    const $alternatives = $("#alternativesContainer");
+    const $loadAlternativesBtn = $("#loadAlternativesBtn");
+
+    function getAccessToken() {
+        const fromStorage = localStorage.getItem("accessToken") || sessionStorage.getItem("accessToken");
+        if (fromStorage) return fromStorage;
+
+        const fromHidden = $("#initialAccessToken").val();
+        return fromHidden || "";
+    }
+
+    function authHeaders() {
+        const token = getAccessToken();
+        if (!token) return {};
+        return { "Authorization": `Bearer ${token}` };
+    }
+
+    function showAlert(type, text) {
+        $alert.html(`<div class="alert alert-${type}" role="alert">${text}</div>`);
+    }
+
+    function combineUtc(dateValue, timeValue) {
+        return new Date(`${dateValue}T${timeValue}:00Z`).toISOString();
+    }
+
+    function fillRooms(buildingId) {
+        const filtered = buildingId ? rooms.filter(r => r.buildingId === buildingId) : rooms;
+        const options = ['<option value="">Select room</option>']
+            .concat(filtered.map(r => `<option value="${r.id}">${r.number} (floor ${r.floor})</option>`));
+
+        $room.html(options.join(""));
+    }
+
+    function renderAlternatives(items) {
+        if (!items || !items.length) {
+            $alternatives.html('<div class="text-muted">No alternatives found.</div>');
+            return;
+        }
+
+        const cards = items.map(item => {
+            const reasons = (item.reasons || []).map(r => `<li>${r}</li>`).join("");
+            const start = new Date(item.startTimeUtc).toUTCString();
+            const end = new Date(item.endTimeUtc).toUTCString();
+
+            return `
+<div class="card mb-2 border-0 shadow-sm">
+  <div class="card-body">
+    <div class="d-flex justify-content-between align-items-start">
+      <div>
+        <div class="fw-semibold">${start} - ${end}</div>
+        <div class="small text-muted">Model: ${item.modelVersion}</div>
+      </div>
+      <span class="badge bg-primary">Score ${item.finalScore.toFixed(2)}</span>
+    </div>
+    <div class="mt-2 small">
+      <div>Risk: ${(item.probability * 100).toFixed(0)}%</div>
+      <div>Availability: ${(item.availabilityScore * 100).toFixed(0)}%</div>
+      <div>Utilization: ${(item.utilizationScore * 100).toFixed(0)}%</div>
+    </div>
+    <ul class="small mt-2 mb-0">${reasons}</ul>
+    <button type="button" class="btn btn-sm btn-outline-primary mt-3 use-alt-btn"
+      data-start="${item.startTimeUtc}" data-end="${item.endTimeUtc}">Use this slot</button>
+  </div>
+</div>`;
+        });
+
+        $alternatives.html(cards.join(""));
+    }
+
+    async function loadLookups() {
+        const [buildingsData, roomsData] = await Promise.all([
+            $.ajax({ url: "/api/buildings", method: "GET" }),
+            $.ajax({ url: "/api/rooms", method: "GET" })
+        ]);
+
+        buildings = buildingsData || [];
+        rooms = roomsData || [];
+
+        const buildingOptions = ['<option value="">Select building</option>']
+            .concat(buildings.map(b => `<option value="${b.id}">${b.name} (${b.code})</option>`));
+
+        $building.html(buildingOptions.join(""));
+        fillRooms("");
+    }
+
+    async function createBooking(e) {
+        e.preventDefault();
+        $loadAlternativesBtn.addClass("d-none");
+
+        const buildingId = $building.val();
+        const roomId = $room.val();
+        const dateValue = $("#bookingDate").val();
+        const startTime = $("#startTime").val();
+        const endTime = $("#endTime").val();
+        const purpose = $("#purpose").val();
+
+        if (!buildingId || !roomId || !dateValue || !startTime || !endTime) {
+            showAlert("warning", "Please fill all required fields.");
+            return;
+        }
+
+        const payload = {
+            roomId,
+            startTimeUtc: combineUtc(dateValue, startTime),
+            endTimeUtc: combineUtc(dateValue, endTime),
+            purpose: purpose || ""
+        };
+
+        lastPlannerPayload = {
+            roomId,
+            requestedStartUtc: payload.startTimeUtc,
+            requestedEndUtc: payload.endTimeUtc
+        };
+
+        try {
+            const result = await $.ajax({
+                url: "/api/bookings",
+                method: "POST",
+                contentType: "application/json",
+                headers: authHeaders(),
+                data: JSON.stringify(payload)
+            });
+
+            if (result.status === "Confirmed") {
+                showAlert("success", "Booking created and confirmed automatically.");
+            } else if (result.status === "Pending") {
+                showAlert("warning", "Booking created with Pending status. Please confirm before deadline.");
+            } else {
+                showAlert("info", `Booking created with status: ${result.status}.`);
+            }
+        } catch (xhr) {
+            if (xhr.status === 409) {
+                showAlert("warning", "Selected slot conflicts with existing booking. You can request alternatives.");
+                $loadAlternativesBtn.removeClass("d-none");
+                return;
+            }
+
+            const detail = xhr.responseJSON?.detail || xhr.responseJSON?.title || "Failed to create booking.";
+            showAlert("danger", detail);
+        }
+    }
+
+    async function loadAlternatives() {
+        if (!lastPlannerPayload) {
+            showAlert("warning", "Submit booking request first.");
+            return;
+        }
+
+        try {
+            const response = await $.ajax({
+                url: "/api/planner/propose",
+                method: "POST",
+                contentType: "application/json",
+                headers: authHeaders(),
+                data: JSON.stringify(lastPlannerPayload)
+            });
+
+            renderAlternatives(response.alternatives || []);
+        } catch (xhr) {
+            const detail = xhr.responseJSON?.detail || xhr.responseJSON?.title || "Failed to load alternatives.";
+            showAlert("danger", detail);
+        }
+    }
+
+    function applyAlternative(startUtc, endUtc) {
+        const start = new Date(startUtc);
+        const end = new Date(endUtc);
+
+        $("#bookingDate").val(start.toISOString().slice(0, 10));
+        $("#startTime").val(start.toISOString().slice(11, 16));
+        $("#endTime").val(end.toISOString().slice(11, 16));
+        showAlert("info", "Alternative applied to form. Click Create booking to submit.");
+    }
+
+    $(document).on("change", "#buildingId", function () {
+        fillRooms($(this).val());
+    });
+
+    $(document).on("click", "#loadAlternativesBtn", loadAlternatives);
+    $(document).on("submit", "#bookingForm", createBooking);
+
+    $(document).on("click", ".use-alt-btn", function () {
+        applyAlternative($(this).data("start"), $(this).data("end"));
+    });
+
+    loadLookups().catch(() => showAlert("danger", "Failed to load buildings/rooms."));
+})();
+</script>
+}

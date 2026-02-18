@@ -1,0 +1,95 @@
+@page
+@model BookingPlatform.Web.Pages.Admin.LifecycleModel
+@{
+    ViewData["Title"] = "Lifecycle Runner";
+}
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <h1 class="h4 mb-3">Lifecycle Runner</h1>
+        <p class="text-muted">Execute autonomous booking lifecycle processor manually for diagnostics.</p>
+
+        <input type="hidden" id="adminToken" value="@Model.AccessToken" />
+
+        <button id="runLifecycleBtn" class="btn btn-primary" type="button">Run lifecycle now</button>
+        <a class="btn btn-outline-secondary" asp-page="/Admin/Index">Back to admin panel</a>
+
+        <div id="lifecycleAlert" class="mt-3"></div>
+
+        <div class="row g-3 mt-1" id="lifecycleCounts" style="display:none;">
+            <div class="col-sm-6 col-lg-3">
+                <div class="card border-warning">
+                    <div class="card-body">
+                        <div class="text-muted small">Expired Pending</div>
+                        <div class="h4 mb-0" id="expiredPendingCount">0</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-sm-6 col-lg-3">
+                <div class="card border-info">
+                    <div class="card-body">
+                        <div class="text-muted small">Auto Started</div>
+                        <div class="h4 mb-0" id="autoStartedCount">0</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-sm-6 col-lg-3">
+                <div class="card border-success">
+                    <div class="card-body">
+                        <div class="text-muted small">Auto Completed</div>
+                        <div class="h4 mb-0" id="autoCompletedCount">0</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-sm-6 col-lg-3">
+                <div class="card border-danger">
+                    <div class="card-body">
+                        <div class="text-muted small">No Show</div>
+                        <div class="h4 mb-0" id="noShowCount">0</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+(() => {
+    const $alert = $("#lifecycleAlert");
+    const $counts = $("#lifecycleCounts");
+
+    function showAlert(type, text) {
+        $alert.html(`<div class="alert alert-${type}" role="alert">${text}</div>`);
+    }
+
+    function token() {
+        return $("#adminToken").val() || "";
+    }
+
+    async function runLifecycle() {
+        try {
+            const result = await $.ajax({
+                url: "/api/admin/lifecycle/run",
+                method: "POST",
+                headers: {
+                    "Authorization": `Bearer ${token()}`
+                }
+            });
+
+            $("#expiredPendingCount").text(result.expiredPendingCount ?? 0);
+            $("#autoStartedCount").text(result.autoStartedCount ?? 0);
+            $("#autoCompletedCount").text(result.autoCompletedCount ?? 0);
+            $("#noShowCount").text(result.noShowCount ?? 0);
+            $counts.show();
+            showAlert("success", `Lifecycle run finished. Total transitions: ${result.total ?? 0}.`);
+        } catch (xhr) {
+            const detail = xhr.responseJSON?.detail || xhr.responseJSON?.title || "Lifecycle run failed.";
+            showAlert("danger", detail);
+        }
+    }
+
+    $(document).on("click", "#runLifecycleBtn", runLifecycle);
+})();
+</script>
+}

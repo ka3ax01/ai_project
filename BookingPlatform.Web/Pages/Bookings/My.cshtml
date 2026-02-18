@@ -1,0 +1,178 @@
+@page
+@model BookingPlatform.Web.Pages.Bookings.MyModel
+@{
+    ViewData["Title"] = "My Bookings";
+}
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h1 class="h4 mb-0">My Bookings</h1>
+            <a class="btn btn-sm btn-outline-primary" asp-page="/Bookings/Create">New booking</a>
+        </div>
+
+        <input type="hidden" id="initialAccessToken" value="@Model.InitialAccessToken" />
+
+        <div id="myBookingsAlert"></div>
+
+        <div class="table-responsive">
+            <table class="table align-middle" id="myBookingsTable">
+                <thead>
+                <tr>
+                    <th>Room</th>
+                    <th>Start (UTC)</th>
+                    <th>End (UTC)</th>
+                    <th>Status</th>
+                    <th>Purpose</th>
+                    <th class="text-end">Actions</th>
+                </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+(() => {
+    const $tbody = $("#myBookingsTable tbody");
+    const $alert = $("#myBookingsAlert");
+
+    function getAccessToken() {
+        const fromStorage = localStorage.getItem("accessToken") || sessionStorage.getItem("accessToken");
+        if (fromStorage) return fromStorage;
+
+        const fromHidden = $("#initialAccessToken").val();
+        return fromHidden || "";
+    }
+
+    function authHeaders() {
+        const token = getAccessToken();
+        return token ? { "Authorization": `Bearer ${token}` } : {};
+    }
+
+    function showAlert(type, text) {
+        $alert.html(`<div class="alert alert-${type} mt-2" role="alert">${text}</div>`);
+    }
+
+    function parseJwtSub(token) {
+        if (!token || token.split('.').length < 2) return null;
+        try {
+            const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+            return payload.sub || payload.nameid || null;
+        } catch {
+            return null;
+        }
+    }
+
+    function statusBadge(status) {
+        const map = {
+            Confirmed: "success",
+            Pending: "warning text-dark",
+            InProgress: "primary",
+            Completed: "secondary",
+            Cancelled: "dark",
+            NoShow: "danger"
+        };
+        const cls = map[status] || "light text-dark";
+        return `<span class="badge bg-${cls}">${status}</span>`;
+    }
+
+    function actionButtons(item) {
+        const actions = [];
+        if (item.status === "Pending") {
+            actions.push(`<button class="btn btn-sm btn-outline-success confirm-btn" data-id="${item.id}">Confirm</button>`);
+            actions.push(`<button class="btn btn-sm btn-outline-danger cancel-btn" data-id="${item.id}">Cancel</button>`);
+        } else if (item.status === "Confirmed") {
+            actions.push(`<button class="btn btn-sm btn-outline-danger cancel-btn" data-id="${item.id}">Cancel</button>`);
+        }
+        return actions.join(" ");
+    }
+
+    function renderRows(items) {
+        if (!items.length) {
+            $tbody.html('<tr><td colspan="6" class="text-muted">No bookings found.</td></tr>');
+            return;
+        }
+
+        const rows = items.map(item => `
+<tr>
+  <td>${item.roomName || item.roomId}</td>
+  <td>${new Date(item.startTimeUtc).toUTCString()}</td>
+  <td>${new Date(item.endTimeUtc).toUTCString()}</td>
+  <td>${statusBadge(item.status)}</td>
+  <td>${item.purpose || ""}</td>
+  <td class="text-end">${actionButtons(item)}</td>
+</tr>`);
+
+        $tbody.html(rows.join(""));
+    }
+
+    async function loadBookings() {
+        try {
+            const token = getAccessToken();
+            const sub = parseJwtSub(token);
+
+            const all = await $.ajax({
+                url: "/api/bookings",
+                method: "GET",
+                headers: authHeaders()
+            });
+
+            const filtered = sub
+                ? (all || []).filter(x => (x.userId || "").toLowerCase() === String(sub).toLowerCase())
+                : (all || []);
+
+            renderRows(filtered);
+        } catch (xhr) {
+            const detail = xhr.responseJSON?.detail || xhr.responseJSON?.title || "Failed to load bookings.";
+            showAlert("danger", detail);
+            renderRows([]);
+        }
+    }
+
+    async function confirmBooking(id) {
+        try {
+            await $.ajax({
+                url: `/api/bookings/${id}/confirm`,
+                method: "POST",
+                headers: authHeaders()
+            });
+            showAlert("success", "Booking confirmed.");
+            await loadBookings();
+        } catch (xhr) {
+            const detail = xhr.responseJSON?.detail || xhr.responseJSON?.title || "Failed to confirm booking.";
+            showAlert("danger", detail);
+        }
+    }
+
+    async function cancelBooking(id) {
+        try {
+            await $.ajax({
+                url: `/api/bookings/${id}/status`,
+                method: "PATCH",
+                contentType: "application/json",
+                headers: authHeaders(),
+                data: JSON.stringify({ id: id, status: "Cancelled" })
+            });
+            showAlert("info", "Booking cancelled.");
+            await loadBookings();
+        } catch (xhr) {
+            const detail = xhr.responseJSON?.detail || xhr.responseJSON?.title || "Failed to cancel booking.";
+            showAlert("danger", detail);
+        }
+    }
+
+    $(document).on("click", ".confirm-btn", function () {
+        confirmBooking($(this).data("id"));
+    });
+
+    $(document).on("click", ".cancel-btn", function () {
+        cancelBooking($(this).data("id"));
+    });
+
+    loadBookings();
+})();
+</script>
+}

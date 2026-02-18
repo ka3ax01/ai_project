@@ -1,12 +1,69 @@
 ﻿@page
 @model IndexModel
 @{
-    ViewData["Title"] = "Home page";
+    ViewData["Title"] = "Home";
 }
 
-<div class="text-center">
-    <h1 class="display-4">Booking Platform</h1>
-    <p>
-        <a asp-page="/Admin/Index">Go to admin panel</a>
-    </p>
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h1 class="h3 mb-0">Welcome, @Model.CurrentUsername</h1>
+        <p class="text-muted mb-0">Your current bookings</p>
+    </div>
+    <div class="d-flex gap-2">
+        <a class="btn btn-outline-primary" asp-page="/Bookings/Create">Create Booking</a>
+        @if (Model.IsAdmin)
+        {
+            <a class="btn btn-dark" asp-page="/Admin/Index">Admin</a>
+        }
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Room</th>
+                        <th>Start (UTC)</th>
+                        <th>End (UTC)</th>
+                        <th>Status</th>
+                        <th>Purpose</th>
+                    </tr>
+                </thead>
+                <tbody>
+                @if (!Model.MyBookings.Any())
+                {
+                    <tr>
+                        <td colspan="5" class="text-muted">No bookings yet.</td>
+                    </tr>
+                }
+                else
+                {
+                    foreach (var booking in Model.MyBookings)
+                    {
+                        var badgeClass = booking.Status switch
+                        {
+                            "Confirmed" => "bg-success",
+                            "Pending" => "bg-warning text-dark",
+                            "InProgress" => "bg-primary",
+                            "Completed" => "bg-secondary",
+                            "Cancelled" => "bg-dark",
+                            "NoShow" => "bg-danger",
+                            _ => "bg-light text-dark"
+                        };
+
+                        <tr>
+                            <td>@(string.IsNullOrWhiteSpace(booking.RoomName) ? booking.RoomId.ToString() : booking.RoomName)</td>
+                            <td>@booking.StartTimeUtc.ToUniversalTime().ToString("yyyy-MM-dd HH:mm")</td>
+                            <td>@booking.EndTimeUtc.ToUniversalTime().ToString("yyyy-MM-dd HH:mm")</td>
+                            <td><span class="badge @badgeClass">@booking.Status</span></td>
+                            <td>@booking.Purpose</td>
+                        </tr>
+                    }
+                }
+                </tbody>
+            </table>
+        </div>
+    </div>
 </div>
