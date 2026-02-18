@@ -23,6 +23,7 @@ public class AppDbContext : DbContext
     public DbSet<RoomEquipment> RoomEquipment => Set<RoomEquipment>();
     public DbSet<Booking> Bookings => Set<Booking>();
     public DbSet<BookingAuditLog> BookingAuditLogs => Set<BookingAuditLog>();
+    public DbSet<BookingPrediction> BookingPredictions => Set<BookingPrediction>();
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<UserRoleEntry> UserRoles => Set<UserRoleEntry>();
@@ -58,6 +59,15 @@ public class AppDbContext : DbContext
             b.Property(x => x.CorrelationId).HasMaxLength(128);
             b.Property(x => x.IpAddress).HasMaxLength(64);
             b.Property(x => x.UserAgent).HasMaxLength(512);
+        });
+
+        modelBuilder.Entity<BookingPrediction>(b =>
+        {
+            b.ToTable("BookingPredictions");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.ModelVersion).HasMaxLength(128);
+            b.Property(x => x.FeaturesJson).HasColumnType("jsonb");
+            b.HasIndex(x => x.BookingId);
         });
 
         modelBuilder.Entity<Notification>(b =>

@@ -96,7 +96,7 @@ public sealed class BookingLifecycleBackgroundService : BackgroundService
         var threshold = now.AddMinutes(-grace);
 
         var toNoShow = await dbContext.Bookings
-            .Where(b => (b.Status == BookingStatus.Confirmed || b.Status == BookingStatus.InProgress)
+            .Where(b => b.Status == BookingStatus.Confirmed
                         && b.StartTimeUtc < threshold)
             .ToListAsync(cancellationToken);
 
@@ -108,11 +108,6 @@ public sealed class BookingLifecycleBackgroundService : BackgroundService
         await using var tx = await dbContext.Database.BeginTransactionAsync(cancellationToken);
         foreach (var booking in toNoShow)
         {
-            if (booking.Status == BookingStatus.InProgress)
-            {
-                continue;
-            }
-
             var oldStatus = booking.Status;
             booking.Status = BookingStatus.NoShow;
 

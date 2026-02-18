@@ -19,16 +19,19 @@ public sealed class CreateBookingCommandHandler : IRequestHandler<CreateBookingC
 {
     private readonly AppDbContext _dbContext;
     private readonly IRequestContextAccessor _requestContextAccessor;
-    private readonly BookingLifecycleOptions _options;
+    private readonly INoShowRiskEvaluator _riskEvaluator;
+    private readonly RiskPolicyOptions _riskOptions;
 
     public CreateBookingCommandHandler(
         AppDbContext dbContext,
         IRequestContextAccessor requestContextAccessor,
-        IOptions<BookingLifecycleOptions> options)
+        INoShowRiskEvaluator riskEvaluator,
+        IOptions<RiskPolicyOptions> riskOptions)
     {
         _dbContext = dbContext;
         _requestContextAccessor = requestContextAccessor;
-        _options = options.Value;
+        _riskEvaluator = riskEvaluator;
+        _riskOptions = riskOptions.Value;
     }
 
     public async Task<BookingDto> Handle(CreateBookingCommand request, CancellationToken cancellationToken)
@@ -38,14 +41,11 @@ public sealed class CreateBookingCommandHandler : IRequestHandler<CreateBookingC
 
         var startUtc = request.StartTimeUtc.ToUniversalTime();
         var endUtc = request.EndTimeUtc.ToUniversalTime();
-
         if (startUtc >= endUtc)
         {
             throw new InvalidOperationException("Start time must be less than end time.");
         }
 
-        // IMPORTANT: EF Core cannot translate custom C# methods inside LINQ-to-SQL.
-        // Use Contains(...) so it becomes SQL IN (...)
         var blockingStatuses = new[]
         {
             BookingStatus.Pending,
@@ -61,13 +61,37 @@ public sealed class CreateBookingCommandHandler : IRequestHandler<CreateBookingC
                      && b.StartTimeUtc < endUtc
                      && b.EndTimeUtc > startUtc,
                 cancellationToken);
-
         if (hasOverlap)
         {
             throw new BookingConflictException("The resource is already booked for the requested time range.");
         }
 
-        var confirmationWindow = _options.ConfirmationWindowMinutes <= 0 ? 15 : _options.ConfirmationWindowMinutes;
+        var now = DateTimeOffset.UtcNow;
+        var historicalNoShows = await _dbContext.Bookings
+            .AsNoTracking()
+            .CountAsync(b => b.UserId == currentUserId && b.Status == BookingStatus.NoShow, cancellationToken);
+
+        var evaluation = await _riskEvaluator.EvaluateAsync(new BookingRiskContext
+        {
+            UserId = currentUserId,
+            RoomId = request.RoomId,
+            StartTimeUtc = startUtc,
+            EndTimeUtc = endUtc,
+            HistoricalNoShowCount = historicalNoShows,
+            EvaluatedAtUtc = now
+        }, cancellationToken);
+
+        var threshold = Math.Clamp(_riskOptions.ConfirmationThreshold, 0d, 1d);
+        Console.WriteLine($"Risk={evaluation.Probability}, Threshold={threshold}");
+
+        var requiresConfirmation = evaluation.Probability >= threshold;
+
+        var confirmationWindowMinutes = _riskOptions.ConfirmationWindowMinutes <= 0
+            ? 15
+            : _riskOptions.ConfirmationWindowMinutes;
+
+        Console.WriteLine($"Threshold={_riskOptions.ConfirmationThreshold}");
+
 
         var booking = new Booking
         {
@@ -76,18 +100,31 @@ public sealed class CreateBookingCommandHandler : IRequestHandler<CreateBookingC
             UserId = currentUserId,
             StartTimeUtc = startUtc,
             EndTimeUtc = endUtc,
-            ConfirmByUtc = startUtc.AddMinutes(-confirmationWindow),
-            ConfirmedAtUtc = null,
-            Status = BookingStatus.Pending,
+            Status = requiresConfirmation ? BookingStatus.Pending : BookingStatus.Confirmed,
+            ConfirmByUtc = requiresConfirmation ? startUtc.AddMinutes(-confirmationWindowMinutes) : null,
+            ConfirmedAtUtc = requiresConfirmation ? null : now,
             Purpose = request.Purpose,
-            CreatedAtUtc = DateTimeOffset.UtcNow,
+            CreatedAtUtc = now,
             CreatedBy = currentUserId,
+        };
+
+        var prediction = new BookingPrediction
+        {
+            Id = Guid.NewGuid(),
+            BookingId = booking.Id,
+            Probability = evaluation.Probability,
+            Threshold = threshold,
+            PredictedLabel = requiresConfirmation,
+            ModelVersion = evaluation.ModelVersion,
+            FeaturesJson = evaluation.FeaturesJson,
+            CreatedAtUtc = now
         };
 
         await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
         try
         {
             _dbContext.Bookings.Add(booking);
+            _dbContext.BookingPredictions.Add(prediction);
 
             _dbContext.BookingAuditLogs.Add(BookingAuditHelpers.CreateAudit(
                 booking.Id,
@@ -100,6 +137,28 @@ public sealed class CreateBookingCommandHandler : IRequestHandler<CreateBookingC
                 booking.UserId,
                 "BookingCreated",
                 new { booking.Id, booking.RoomId, booking.StartTimeUtc, booking.EndTimeUtc, booking.Status }));
+
+            if (requiresConfirmation)
+            {
+                _dbContext.Notifications.Add(NotificationFactory.Create(
+                    booking.UserId,
+                    "BookingNeedsConfirmation",
+                    new { booking.Id, booking.ConfirmByUtc }));
+            }
+            else
+            {
+                _dbContext.BookingAuditLogs.Add(BookingAuditHelpers.CreateAudit(
+                    booking.Id,
+                    "BookingConfirmed",
+                    null,
+                    booking.Status,
+                    _requestContextAccessor));
+
+                _dbContext.Notifications.Add(NotificationFactory.Create(
+                    booking.UserId,
+                    "BookingConfirmedAutomatically",
+                    new { booking.Id, booking.RoomId, booking.StartTimeUtc, booking.EndTimeUtc }));
+            }
 
             await _dbContext.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
@@ -380,6 +439,84 @@ public sealed class GetBookingByIdQueryHandler : IRequestHandler<GetBookingByIdQ
     }
 }
 
+public sealed class GetBookingRiskQueryHandler : IRequestHandler<GetBookingRiskQuery, BookingRiskDto>
+{
+    private readonly AppDbContext _dbContext;
+    private readonly INoShowRiskEvaluator _riskEvaluator;
+    private readonly RiskPolicyOptions _riskOptions;
+
+    public GetBookingRiskQueryHandler(
+        AppDbContext dbContext,
+        INoShowRiskEvaluator riskEvaluator,
+        IOptions<RiskPolicyOptions> riskOptions)
+    {
+        _dbContext = dbContext;
+        _riskEvaluator = riskEvaluator;
+        _riskOptions = riskOptions.Value;
+    }
+
+    public async Task<BookingRiskDto> Handle(GetBookingRiskQuery request, CancellationToken cancellationToken)
+    {
+        var threshold = Math.Clamp(_riskOptions.ConfirmationThreshold, 0d, 1d);
+
+        var persisted = await _dbContext.BookingPredictions
+            .AsNoTracking()
+            .Where(x => x.BookingId == request.BookingId)
+            .OrderByDescending(x => x.CreatedAtUtc)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (persisted is not null)
+        {
+            return new BookingRiskDto
+            {
+                BookingId = persisted.BookingId,
+                Probability = persisted.Probability,
+                Threshold = persisted.Threshold,
+                PredictedNoShow = persisted.PredictedLabel,
+                ModelVersion = persisted.ModelVersion,
+                FeaturesJson = persisted.FeaturesJson,
+                CreatedAtUtc = persisted.CreatedAtUtc
+            };
+        }
+
+        var booking = await _dbContext.Bookings
+            .AsNoTracking()
+            .FirstOrDefaultAsync(b => b.Id == request.BookingId, cancellationToken);
+
+        if (booking is null)
+        {
+            throw new KeyNotFoundException("Booking not found");
+        }
+
+        var historicalNoShows = await _dbContext.Bookings
+            .AsNoTracking()
+            .CountAsync(b => b.UserId == booking.UserId && b.Status == BookingStatus.NoShow && b.Id != booking.Id,
+                cancellationToken);
+
+        var now = DateTimeOffset.UtcNow;
+        var evaluation = await _riskEvaluator.EvaluateAsync(new BookingRiskContext
+        {
+            UserId = booking.UserId,
+            RoomId = booking.RoomId,
+            StartTimeUtc = booking.StartTimeUtc,
+            EndTimeUtc = booking.EndTimeUtc,
+            HistoricalNoShowCount = historicalNoShows,
+            EvaluatedAtUtc = now
+        }, cancellationToken);
+
+        return new BookingRiskDto
+        {
+            BookingId = booking.Id,
+            Probability = evaluation.Probability,
+            Threshold = threshold,
+            PredictedNoShow = evaluation.Probability >= threshold,
+            ModelVersion = evaluation.ModelVersion,
+            FeaturesJson = evaluation.FeaturesJson,
+            CreatedAtUtc = now
+        };
+    }
+}
+
 internal static class BookingMappings
 {
     public static BookingDto ToDto(Booking booking) => new()
@@ -398,8 +535,6 @@ internal static class BookingMappings
 
 internal static class BookingStatusRules
 {
-    // Keep this for domain logic / non-LINQ usage (e.g., transitions, background jobs).
-    // Do not call this inside EF LINQ queries.
     public static bool BlocksOverlap(BookingStatus status) =>
         status is BookingStatus.Pending or BookingStatus.Confirmed or BookingStatus.InProgress;
 

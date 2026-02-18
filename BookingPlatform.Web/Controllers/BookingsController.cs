@@ -34,6 +34,15 @@ public class BookingsController : ControllerBase
         return result is null ? NotFound() : Ok(result);
     }
 
+    [HttpGet("{id:guid}/risk")]
+    [ProducesResponseType(typeof(BookingRiskDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<BookingRiskDto>> GetRisk(Guid id, CancellationToken cancellationToken)
+    {
+        var result = await _mediator.Send(new GetBookingRiskQuery(id), cancellationToken);
+        return Ok(result);
+    }
+
     [HttpPost]
     [ProducesResponseType(typeof(BookingDto), StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
