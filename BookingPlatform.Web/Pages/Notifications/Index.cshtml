@@ -1,0 +1,173 @@
+@page
+@model BookingPlatform.Web.Pages.Notifications.IndexModel
+@{
+    ViewData["Title"] = "Notifications";
+    var activeFilter = Model.Filter;
+}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h4 mb-0">Notifications</h1>
+    <div class="d-flex gap-2">
+        <a class="btn @(activeFilter == "all" ? "btn-primary" : "btn-outline-primary")" asp-page="/Notifications/Index" asp-route-filter="all">All</a>
+        <a class="btn @(activeFilter == "unread" ? "btn-primary" : "btn-outline-primary")" asp-page="/Notifications/Index" asp-route-filter="unread">Unread</a>
+        <button id="markAllReadBtn" type="button" class="btn btn-outline-secondary">Mark all read</button>
+    </div>
+</div>
+
+<input type="hidden" id="initialAccessToken" value="@Model.InitialAccessToken" />
+<input type="hidden" id="currentFilter" value="@activeFilter" />
+
+<div id="notificationAlert"></div>
+
+<div class="card shadow-sm">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                <tr>
+                    <th style="min-width:180px;">Created (UTC)</th>
+                    <th>Message</th>
+                    <th style="min-width:140px;">Type</th>
+                    <th style="min-width:120px;">Status</th>
+                    <th style="min-width:120px;"></th>
+                </tr>
+                </thead>
+                <tbody id="notifTableBody">
+                @if (Model.Notifications.Items.Count == 0)
+                {
+                    <tr>
+                        <td colspan="5" class="text-center text-muted py-4">No notifications found.</td>
+                    </tr>
+                }
+                else
+                {
+                    foreach (var n in Model.Notifications.Items)
+                    {
+                        var isRead = string.Equals(n.Status, "Read", StringComparison.OrdinalIgnoreCase);
+                        <tr data-id="@n.Id">
+                            <td>@n.CreatedAtUtc.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                            <td>@n.Message</td>
+                            <td><span class="badge text-bg-info">@n.Type</span></td>
+                            <td>
+                                @if (isRead)
+                                {
+                                    <span class="badge text-bg-secondary">Read</span>
+                                }
+                                else
+                                {
+                                    <span class="badge text-bg-warning">Unread</span>
+                                }
+                            </td>
+                            <td>
+                                @if (!isRead)
+                                {
+                                    <button type="button" class="btn btn-sm btn-outline-primary mark-read-btn">Mark read</button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+(() => {
+    const token = $("#initialAccessToken").val();
+    const filter = $("#currentFilter").val() || "all";
+    const $tbody = $("#notifTableBody");
+    const $alert = $("#notificationAlert");
+
+    function authHeaders() {
+        return token ? { "Authorization": `Bearer ${token}` } : {};
+    }
+
+    function showAlert(type, text) {
+        $alert.html(`<div class="alert alert-${type}" role="alert">${text}</div>`);
+    }
+
+    function rowHtml(item) {
+        const isRead = String(item.status || "").toLowerCase() === "read";
+        const created = new Date(item.createdAtUtc).toISOString().replace("T", " ").slice(0, 19);
+        return `
+<tr data-id="${item.id}">
+  <td>${created}</td>
+  <td>${item.message || ""}</td>
+  <td><span class="badge text-bg-info">${item.type || ""}</span></td>
+  <td>${isRead ? '<span class="badge text-bg-secondary">Read</span>' : '<span class="badge text-bg-warning">Unread</span>'}</td>
+  <td>${isRead ? '' : '<button type="button" class="btn btn-sm btn-outline-primary mark-read-btn">Mark read</button>'}</td>
+</tr>`;
+    }
+
+    async function reloadList() {
+        try {
+            const response = await $.ajax({
+                url: `/api/notifications/my?status=${encodeURIComponent(filter)}&take=50&skip=0`,
+                method: "GET",
+                headers: authHeaders()
+            });
+
+            const items = response.items || [];
+            if (!items.length) {
+                $tbody.html('<tr><td colspan="5" class="text-center text-muted py-4">No notifications found.</td></tr>');
+                return;
+            }
+
+            $tbody.html(items.map(rowHtml).join(""));
+        } catch (xhr) {
+            const detail = xhr.responseJSON?.detail || xhr.responseJSON?.title || "Failed to load notifications.";
+            showAlert("danger", detail);
+        }
+    }
+
+    async function markRead(ids) {
+        if (!ids.length) {
+            return;
+        }
+
+        try {
+            const response = await $.ajax({
+                url: "/api/notifications/my/mark-read",
+                method: "POST",
+                contentType: "application/json",
+                headers: authHeaders(),
+                data: JSON.stringify({ ids })
+            });
+
+            if (response.updated > 0) {
+                await reloadList();
+            }
+        } catch (xhr) {
+            const detail = xhr.responseJSON?.detail || xhr.responseJSON?.title || "Failed to mark notification as read.";
+            showAlert("danger", detail);
+        }
+    }
+
+    async function markAllRead() {
+        try {
+            const response = await $.ajax({
+                url: "/api/notifications/my/mark-all-read",
+                method: "POST",
+                headers: authHeaders()
+            });
+
+            showAlert("success", `Updated: ${response.updated}`);
+            await reloadList();
+        } catch (xhr) {
+            const detail = xhr.responseJSON?.detail || xhr.responseJSON?.title || "Failed to mark all notifications as read.";
+            showAlert("danger", detail);
+        }
+    }
+
+    $(document).on("click", ".mark-read-btn", function () {
+        const id = $(this).closest("tr").data("id");
+        markRead([id]);
+    });
+
+    $("#markAllReadBtn").on("click", markAllRead);
+})();
+</script>
+}
