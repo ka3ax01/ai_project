@@ -43,7 +43,6 @@
                     </div>
                     <div class="col-12 d-flex gap-2">
                         <button class="btn btn-primary" type="submit">Create booking</button>
-                        <button class="btn btn-outline-secondary d-none" id="loadAlternativesBtn" type="button">Show alternatives</button>
                     </div>
                 </form>
             </div>
@@ -62,13 +61,14 @@
 (() => {
     let buildings = [];
     let rooms = [];
-    let lastPlannerPayload = null;
+    let lastSuggestPayload = null;
+    let bookingRequestInFlight = false;
 
     const $building = $("#buildingId");
     const $room = $("#roomId");
     const $alert = $("#bookingAlert");
     const $alternatives = $("#alternativesContainer");
-    const $loadAlternativesBtn = $("#loadAlternativesBtn");
+    const $ollamaModeToggle = $("#ollamaModeToggle");
 
     function getAccessToken() {
         const fromStorage = localStorage.getItem("accessToken") || sessionStorage.getItem("accessToken");
@@ -100,7 +100,12 @@
         $room.html(options.join(""));
     }
 
-    function renderAlternatives(items) {
+    function renderAlternatives(items, message) {
+        if (message) {
+            $alternatives.html(`<div class="text-muted">${message}</div>`);
+            return;
+        }
+
         if (!items || !items.length) {
             $alternatives.html('<div class="text-muted">No alternatives found.</div>');
             return;
@@ -108,32 +113,35 @@
 
         const cards = items.map(item => {
             const reasons = (item.reasons || []).map(r => `<li>${r}</li>`).join("");
-            const start = new Date(item.startTimeUtc).toUTCString();
-            const end = new Date(item.endTimeUtc).toUTCString();
+            const start = new Date(item.startTimeUtc);
+            const end = new Date(item.endTimeUtc);
+            const timeText = `${start.toISOString().slice(0, 16).replace("T", " ")} UTC - ${end.toISOString().slice(11, 16)} UTC`;
+            const riskPercent = (item.riskProbability * 100).toFixed(0);
+            const score = Number(item.score || 0).toFixed(2);
 
             return `
 <div class="card mb-2 border-0 shadow-sm">
   <div class="card-body">
     <div class="d-flex justify-content-between align-items-start">
       <div>
-        <div class="fw-semibold">${start} - ${end}</div>
-        <div class="small text-muted">Model: ${item.modelVersion}</div>
+        <div class="fw-semibold">${item.buildingCode} / Room ${item.roomNumber} (floor ${item.floor})</div>
+        <div class="small text-muted">${timeText}</div>
       </div>
-      <span class="badge bg-primary">Score ${item.finalScore.toFixed(2)}</span>
+      <span class="badge bg-primary">Score ${score}</span>
     </div>
-    <div class="mt-2 small">
-      <div>Risk: ${(item.probability * 100).toFixed(0)}%</div>
-      <div>Availability: ${(item.availabilityScore * 100).toFixed(0)}%</div>
-      <div>Utilization: ${(item.utilizationScore * 100).toFixed(0)}%</div>
-    </div>
+    <div class="small mt-2 text-muted">Risk: ${riskPercent}%</div>
     <ul class="small mt-2 mb-0">${reasons}</ul>
     <button type="button" class="btn btn-sm btn-outline-primary mt-3 use-alt-btn"
-      data-start="${item.startTimeUtc}" data-end="${item.endTimeUtc}">Use this slot</button>
+      data-room-id="${item.roomId}" data-start="${item.startTimeUtc}" data-end="${item.endTimeUtc}">Book this slot</button>
   </div>
 </div>`;
         });
 
         $alternatives.html(cards.join(""));
+    }
+
+    function resetAlternativesPanel() {
+        $alternatives.html('<div class="text-muted">Alternatives will appear here after conflict detection.</div>');
     }
 
     async function loadLookups() {
@@ -154,7 +162,9 @@
 
     async function createBooking(e) {
         e.preventDefault();
-        $loadAlternativesBtn.addClass("d-none");
+        if (bookingRequestInFlight) {
+            return;
+        }
 
         const buildingId = $building.val();
         const roomId = $room.val();
@@ -175,13 +185,17 @@
             purpose: purpose || ""
         };
 
-        lastPlannerPayload = {
+        lastSuggestPayload = {
             roomId,
-            requestedStartUtc: payload.startTimeUtc,
-            requestedEndUtc: payload.endTimeUtc
+            startTimeUtc: payload.startTimeUtc,
+            endTimeUtc: payload.endTimeUtc,
+            priority: { time: 0.6, roomProximity: 0.3, building: 0.1 },
+            constraints: { sameDayOnly: true, maxResults: 8, maxTimeShiftMinutes: 180 },
+            mode: $ollamaModeToggle.is(":checked") ? "ollama" : "deterministic"
         };
 
         try {
+            bookingRequestInFlight = true;
             const result = await $.ajax({
                 url: "/api/bookings",
                 method: "POST",
@@ -197,59 +211,80 @@
             } else {
                 showAlert("info", `Booking created with status: ${result.status}.`);
             }
+            resetAlternativesPanel();
         } catch (xhr) {
             if (xhr.status === 409) {
-                showAlert("warning", "Selected slot conflicts with existing booking. You can request alternatives.");
-                $loadAlternativesBtn.removeClass("d-none");
+                showAlert("warning", "Selected slot conflicts with existing booking. Loading alternatives...");
+                await loadAlternatives();
                 return;
             }
 
             const detail = xhr.responseJSON?.detail || xhr.responseJSON?.title || "Failed to create booking.";
             showAlert("danger", detail);
+        } finally {
+            bookingRequestInFlight = false;
         }
     }
 
     async function loadAlternatives() {
-        if (!lastPlannerPayload) {
-            showAlert("warning", "Submit booking request first.");
+        if (!lastSuggestPayload) {
+            showAlert("warning", "Fill booking fields first.");
             return;
         }
 
         try {
+            const payload = {
+                ...lastSuggestPayload,
+                mode: $ollamaModeToggle.is(":checked") ? "ollama" : "deterministic"
+            };
+
             const response = await $.ajax({
-                url: "/api/planner/propose",
+                url: "/api/planner/suggest",
                 method: "POST",
                 contentType: "application/json",
                 headers: authHeaders(),
-                data: JSON.stringify(lastPlannerPayload)
+                data: JSON.stringify(payload)
             });
 
-            renderAlternatives(response.alternatives || []);
+            renderAlternatives(response.results || [], response.message || null);
         } catch (xhr) {
             const detail = xhr.responseJSON?.detail || xhr.responseJSON?.title || "Failed to load alternatives.";
             showAlert("danger", detail);
         }
     }
 
-    function applyAlternative(startUtc, endUtc) {
+    function applyAlternative(roomId, startUtc, endUtc) {
         const start = new Date(startUtc);
         const end = new Date(endUtc);
+        const roomMatch = rooms.find(x => String(x.id).toLowerCase() === String(roomId).toLowerCase());
 
         $("#bookingDate").val(start.toISOString().slice(0, 10));
         $("#startTime").val(start.toISOString().slice(11, 16));
         $("#endTime").val(end.toISOString().slice(11, 16));
-        showAlert("info", "Alternative applied to form. Click Create booking to submit.");
+
+        if (roomMatch) {
+            $building.val(roomMatch.buildingId);
+            fillRooms(roomMatch.buildingId);
+            $room.val(roomMatch.id);
+        }
+
+        showAlert("info", "Alternative selected. Booking is being submitted.");
+        $("#bookingForm").trigger("submit");
     }
 
     $(document).on("change", "#buildingId", function () {
         fillRooms($(this).val());
     });
 
-    $(document).on("click", "#loadAlternativesBtn", loadAlternatives);
     $(document).on("submit", "#bookingForm", createBooking);
+    $(document).on("change", "#ollamaModeToggle", function () {
+        if (lastSuggestPayload) {
+            loadAlternatives();
+        }
+    });
 
     $(document).on("click", ".use-alt-btn", function () {
-        applyAlternative($(this).data("start"), $(this).data("end"));
+        applyAlternative($(this).data("room-id"), $(this).data("start"), $(this).data("end"));
     });
 
     loadLookups().catch(() => showAlert("danger", "Failed to load buildings/rooms."));

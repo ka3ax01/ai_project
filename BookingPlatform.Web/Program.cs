@@ -32,8 +32,21 @@ builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
 builder.Services.AddScoped<IRequestContextAccessor, RequestContextAccessor>();
 builder.Services.Configure<BookingLifecycleJobOptions>(builder.Configuration.GetSection("BookingLifecycleJob"));
 builder.Services.Configure<RiskPolicyOptions>(builder.Configuration.GetSection("RiskPolicy"));
+builder.Services.Configure<PlannerOptions>(builder.Configuration.GetSection("Planner"));
+builder.Services.Configure<OllamaOptions>(builder.Configuration.GetSection("Ollama"));
 builder.Services.AddScoped<INoShowRiskEvaluator, HeuristicNoShowRiskEvaluator>();
 builder.Services.AddScoped<ISchedulePlanner, SchedulePlanner>();
+builder.Services.AddScoped<IAlternativeSlotSuggester, AlternativeSlotSuggester>();
+builder.Services.AddHttpClient<IOllamaRanker, OllamaRanker>((serviceProvider, client) =>
+{
+    var options = serviceProvider
+        .GetRequiredService<Microsoft.Extensions.Options.IOptions<OllamaOptions>>()
+        .Value;
+
+    var baseUrl = string.IsNullOrWhiteSpace(options.BaseUrl) ? "http://localhost:11434" : options.BaseUrl;
+    client.BaseAddress = new Uri(baseUrl);
+    client.Timeout = TimeSpan.FromSeconds(options.TimeoutSeconds <= 0 ? 5 : options.TimeoutSeconds);
+});
 builder.Services.AddScoped<IBookingLifecycleProcessor, BookingLifecycleProcessor>();
 builder.Services.AddHostedService<BookingLifecycleHostedService>();
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
