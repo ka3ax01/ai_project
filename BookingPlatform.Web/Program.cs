@@ -28,10 +28,11 @@ builder.Services.AddTransient<CorrelationIdMiddleware>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
 builder.Services.AddScoped<IRequestContextAccessor, RequestContextAccessor>();
-builder.Services.Configure<BookingLifecycleOptions>(builder.Configuration.GetSection("BookingLifecycle"));
+builder.Services.Configure<BookingLifecycleJobOptions>(builder.Configuration.GetSection("BookingLifecycleJob"));
 builder.Services.Configure<RiskPolicyOptions>(builder.Configuration.GetSection("RiskPolicy"));
 builder.Services.AddScoped<INoShowRiskEvaluator, HeuristicNoShowRiskEvaluator>();
-builder.Services.AddHostedService<BookingLifecycleBackgroundService>();
+builder.Services.AddScoped<IBookingLifecycleProcessor, BookingLifecycleProcessor>();
+builder.Services.AddHostedService<BookingLifecycleHostedService>();
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddProblemDetails(options =>
 {
